@@ -1,5 +1,17 @@
 # jdbc
 
+## ResultSetMetaData
+
+`ResultSetMetaData`有两个方法获取字段名称
+
+1. `getColumnName(int index)`，这个方法获取的是该字段在表内的名称。
+
+2. `getConlumnLabel(int index)`，这个方法获取的是你在语句中要求的该字段的名称
+
+
+
+
+
 ## 批处理
 
 ### 使用Statement对象进行批处理
