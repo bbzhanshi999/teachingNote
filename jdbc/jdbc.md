@@ -1,16 +1,124 @@
 # jdbc
 
- 参考：https://www.yiibai.com/jdbc/jdbc-transactions.html
+## 批处理
+
+### 使用Statement对象进行批处理
+
+以下是使用`Statement`对象的批处理的典型步骤序列 -
+
+- 使用`createStatement()`方法创建`Statement`对象。
+- 使用`setAutoCommit()`将自动提交设置为`false`。
+- 使用`addBatch()`方法在创建的`Statement`对象上添加SQL语句到批处理中。
+- 在创建的`Statement`对象上使用`executeBatch()`方法执行所有SQL语句。
+- 最后，使用`commit()`方法提交所有更改。
+
+#### 实例
+
+以下代码片段提供了使用`Statement`对象的批量更新示例 -
+
+```sql
+// Create statement object
+Statement stmt = conn.createStatement();
+
+// Set auto-commit to false
+conn.setAutoCommit(false);
+
+// Create SQL statement
+String SQL = "INSERT INTO Employees (id, first, last, age) " +
+             "VALUES(200,'Ruby', 'Yang', 30)";
+// Add above SQL statement in the batch.
+stmt.addBatch(SQL);
+
+// Create one more SQL statement
+String SQL = "INSERT INTO Employees (id, first, last, age) " +
+             "VALUES(201,'Java', 'Lee', 35)";
+// Add above SQL statement in the batch.
+stmt.addBatch(SQL);
+
+// Create one more SQL statement
+String SQL = "UPDATE Employees SET age = 35 " +
+             "WHERE id = 100";
+// Add above SQL statement in the batch.
+stmt.addBatch(SQL);
+
+// Create an int[] to hold returned values
+int[] count = stmt.executeBatch();
+
+//Explicitly commit statements to apply changes
+conn.commit();
+SQL
+```
+
+### 使用PrepareStatement对象进行批处理
+
+以下是使用`PrepareStatement`对象进行批处理的典型步骤顺序 -
+
+- 使用占位符创建SQL语句。
+- 使用`prepareStatement()`方法创建`PrepareStatement`对象。
+- 使用`setAutoCommit()`将自动提交设置为`false`。
+- 使用`addBatch()`方法在创建的`Statement`对象上添加SQL语句到批处理中。
+- 在创建的`Statement`对象上使用`executeBatch()`方法执行所有SQL语句。
+- 最后，使用`commit()`方法提交所有更改。
+
+以下代码段提供了使用`PreparedStatement`对象进行批量更新的示例 -
+
+```java
+// Create SQL statement
+String SQL = "INSERT INTO Employees (id, first, last, age) " +
+             "VALUES(?, ?, ?, ?)";
+
+// Create PrepareStatement object
+PreparedStatemen pstmt = conn.prepareStatement(SQL);
+
+//Set auto-commit to false
+conn.setAutoCommit(false);
+
+// Set the variables
+pstmt.setInt( 1, 400 );
+pstmt.setString( 2, "JDBC" );
+pstmt.setString( 3, "Li" );
+pstmt.setInt( 4, 33 );
+// Add it to the batch
+pstmt.addBatch();
+
+// Set the variables
+pstmt.setInt( 1, 401 );
+pstmt.setString( 2, "CSharp" );
+pstmt.setString( 3, "Liang" );
+pstmt.setInt( 4, 31 );
+// Add it to the batch
+pstmt.addBatch();
+
+//Create an int[] to hold returned values
+int[] count = stmt.executeBatch();
+
+//Explicitly commit statements to apply changes
+conn.commit();
+```
 
 
 
-如果JDBC连接处于自动提交模式，默认情况下，则每个SQL语句在完成后都会提交到数据库。
+## 事务
 
-对于简单的应用程序可能没有问题，但是有三个原因需要考虑是否关闭自动提交并管理自己的事务 -
+### 事务的四大属性
 
-- 提高性能
-- 保持业务流程的完整性
-- 使用分布式事务
+**原子性**：一组事务中的操作要么全部执行，要么一个都不执行。银行转账例子中，要么A账户减少和B账户增加都执行，要么你都不要执行。你要是不小心只执行了一个，那就很成问题啊小朋友！
+
+**一致性**：事务完成后，必须所有的数据都保持一致。在银行转账例子中，参与转账的两个账户的余额总和在转账前后是一致的，你想想，是不是这个道理。
+
+**隔离性**：事务独立运行，而且是100%独立，两个并发事务不可能同时对同一个数据进行操作。还是以银行转账为例子，这回在增加一个C，A和C同时给B转账，A转100，C转200如果同时操作，B的账户上突然一下子多了300元，那B怎么知道这300是谁转的，谁转了多少，这更麻烦了！
+
+**持久性**：事务完成后，对系统的影响是持久的。这个很好理解了，A给B转了钱，那么这笔转账操作永远有效。如果今天有效，明天没效，岂不是很难过。
+
+
+
+> 如果JDBC连接处于自动提交模式，默认情况下，则每个SQL语句在完成后都会提交到数据库。
+>
+> 对于简单的应用程序可能没有问题，但是有三个原因需要考虑是否关闭自动提交并管理自己的事务 -
+>
+> - 提高性能
+> - 保持业务流程的完整性
+> - 使用分布式事务
 
 事务能够控制何时更改提交并应用于数据库。 它将单个SQL语句或一组SQL语句视为一个逻辑单元，如果任何语句失败，整个事务将失败。
 
@@ -23,20 +131,18 @@ conn.setAutoCommit(false);
 Java
 ```
 
-## 提交和回滚
+### 提交和回滚
 
 完成更改后，若要提交更改，那么可在连接对象上调用`commit()`方法，如下所示：
 
 ```java
 conn.commit( );
-Java
 ```
 
 否则，要使用连接名为`conn`的数据库回滚更新，请使用以下代码 -
 
 ```java
 conn.rollback( );
-Java
 ```
 
 以下示例说明了如何使用提交和回滚对象 -
@@ -60,14 +166,13 @@ try{
    // If there is any error.
    conn.rollback();
 }
-Java
 ```
 
 在这种情况下，上述`INSERT`语句不会成功执行，因为所有操作都被回滚了。
 
-为了更好的理解，建议学习研究“[事务提交示例代码](http://www.yiibai.com/jdbc/commit-rollback.html)”。
 
-## 使用保存点
+
+### 使用保存点
 
 新的JDBC 3.0新添加了`Savepoint`接口提供了额外的事务控制能力。大多数现代DBMS支持其环境中的保存点，如Oracle的PL/SQL。
 
@@ -104,7 +209,6 @@ try{
    // If there is any error.
    conn.rollback(savepoint1);
 }
-Java
 ```
 
 在这种情况下，上述`INSERT`语句都不会成功，因为所有操作都被回滚了。
@@ -239,7 +343,6 @@ public static void main(String[] args) {
      System.out.println();
    }//end printRs()
 }//end JDBCExample
-Java
 ```
 
 编译并运行结果如下 -
@@ -269,9 +372,6 @@ ID: 103, Age: 30, First: Jack, Last: Ma
 ID: 106, Age: 28, First: Curry, Last: Stephen
 
 Goodbye!
-
-F:\worksp\jdbc>
-Shell
 ```
 
 可以看到，上面代码中只回滚到保存点(ROWS_DELETED_1)，所以ID为`106`的这一行记录没有被删除，而ID为`107`的记录因为没有设置回滚点，直接提交删除了。
