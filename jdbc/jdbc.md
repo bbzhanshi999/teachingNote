@@ -388,3 +388,157 @@ Goodbye!
 
 可以看到，上面代码中只回滚到保存点(ROWS_DELETED_1)，所以ID为`106`的这一行记录没有被删除，而ID为`107`的记录因为没有设置回滚点，直接提交删除了。
 
+## 数据库连接池
+
+### 实现数据库连接池接口
+
+```java
+package com.neuedu.jdbc;
+
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.LinkedList;
+import java.util.Properties;
+import java.util.logging.Logger;
+
+public class MyDataSource implements DataSource {
+
+    private String url;
+    private String password;
+    private String username;
+    private int poolSize;
+    private LinkedList<Connection> pool = new LinkedList<>();
+
+    static {
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public MyDataSource() {
+        InputStream in = MyDataSource.class.getClassLoader().getResourceAsStream("db.properties");
+        Properties properties = new Properties();
+        try {
+            properties.load(in);
+            url = properties.getProperty("jdbc.url");
+            username = properties.getProperty("jdbc.username");
+            password = properties.getProperty("jdbc.password");
+            poolSize = 10;
+            initPool(poolSize, url, username, password);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void initPool(int poolSize, String url, String username, String password) {
+        for (int i = 0; i < poolSize; i++) {
+            try {
+                pool.addLast(DriverManager.getConnection(url, username, password));
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public MyDataSource(String url, String password, String username, int poolSize) {
+        this.url = url;
+        this.password = password;
+        this.username = username;
+        this.poolSize = poolSize;
+        initPool(poolSize, url, username, password);
+
+    }
+
+    @Override
+    public Connection getConnection() throws SQLException {
+        synchronized (pool) {
+            if (pool.size() <= 0) {
+                try {
+                    pool.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                return getConnection();
+            } else {
+                Connection conn = pool.removeFirst();
+                Object obj = Proxy.newProxyInstance(MyDataSource.class.getClassLoader(),
+                    new Class[]{Connection.class},
+                        (proxy, method, args) -> {
+                            if (method.getName().equals("close")) {
+                                synchronized (pool) {
+                                    pool.add(conn);
+                                    pool.notify();
+                                    return null;
+                                }
+                            } else {
+                                return method.invoke(conn, args);
+                            }
+                        });
+                System.out.println("has conn is :"+pool.size());
+                return (Connection) obj;
+            }
+        }
+    }
+
+
+    @Override
+    public Connection getConnection(String username, String password) throws SQLException {
+        return null;
+    }
+
+    @Override
+    public <T> T unwrap(Class<T> iface) throws SQLException {
+        return null;
+    }
+
+    @Override
+    public boolean isWrapperFor(Class<?> iface) throws SQLException {
+        return false;
+    }
+
+    @Override
+    public PrintWriter getLogWriter() throws SQLException {
+        return null;
+    }
+
+    @Override
+    public void setLogWriter(PrintWriter out) throws SQLException {
+
+    }
+
+    @Override
+    public void setLoginTimeout(int seconds) throws SQLException {
+
+    }
+
+    @Override
+    public int getLoginTimeout() throws SQLException {
+        return 0;
+    }
+
+    @Override
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+        return null;
+    }
+
+}
+
+```
+
+### 常用数据库连接池库的使用
+
+HikariCP，druid ，bonecp，c3p0等
+
+参考：http://baijiahao.baidu.com/s?id=1599699339020031595&wfr=spider&for=pc
