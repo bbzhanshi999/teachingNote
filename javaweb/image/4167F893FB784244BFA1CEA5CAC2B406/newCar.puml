@@ -1,0 +1,34 @@
+@startuml
+
+interface Car{
+    run()
+}
+
+Car<|-- Audi
+Car<|-- BMW
+Car<|-- BYD
+Driver - Car:drives > new AUDI()
+
+
+class Audi{
+    String model
+    beautifulLight()
+}
+
+class BMW{
+    String model
+    autoPark()
+}
+
+class BYD{
+    String model
+    electricMode():电动模式
+}
+
+class Driver{
+    Car car
+    void drive()
+}
+
+
+@enduml

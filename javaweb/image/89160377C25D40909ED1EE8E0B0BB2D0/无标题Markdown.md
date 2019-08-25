@@ -1,0 +1,1 @@
+$\mathrm{CDF}(x) = 1 − \exp[−(x / λ)^k]$ 

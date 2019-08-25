@@ -1,0 +1,46 @@
+@startuml
+
+interface Car{
+    run()
+}
+
+interface Factory{
+    Car create(String type)
+}
+
+Class FactoryImpl{
+    static final String AUDI:"AUDI"
+    static final String BMW:"BMW"
+    static final String BYD:"BYD"
+    Car create(String type)
+}
+
+Car<|-- Audi
+Car<|-- BMW
+Car<|-- BYD
+Factory<|==FactoryImpl
+Driver - FactoryImpl:drives > FactoryImpl.create("AUDI")
+Factory *-- Car
+
+class Audi{
+    String model
+    beautifulLight()
+}
+
+class BMW{
+    String model
+    autoPark()
+}
+
+class BYD{
+    String model
+    electricMode():电动模式
+}
+
+class Driver{
+    Car car
+    void drive()
+}
+
+
+@enduml
