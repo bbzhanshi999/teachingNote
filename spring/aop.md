@@ -252,6 +252,19 @@ public void cglibProxy(){
 
 ## 2. `spring AOP`
 
+要使用spring的注解式aop需要引入以下依赖
+
+```xml
+<dependency>
+    <groupId>org.aspectj</groupId>
+    <artifactId>aspectjweaver</artifactId>
+    <version>1.9.4</version>
+</dependency>
+
+```
+
+
+
 ```java
 package com.neuedu.aop;
 
