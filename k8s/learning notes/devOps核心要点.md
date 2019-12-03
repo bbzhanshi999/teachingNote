@@ -32,9 +32,11 @@ Controller-Manager：管理controller用于控制node的健康，容灾
 
 **node组成**：
 
-kubelet：集群代理，用于接收和执行master发出的命令，如启动pod，本地管理pod健康。
+**kubelet**：集群代理，用于接收和执行master发出的命令，如启动pod，本地管理pod健康。
 
-容器引擎：docker，rkt，用于创建执行容器
+**容器引擎**：docker，rkt，用于创建执行容器
+
+**kube-proxy**: 负责随时与api server通信，用于管理service，一旦service对应的pod节点发生地址的改变，那么kube-proxy会将改变的结果也就是最新的iptables转交给api server，api server会为此生成一个通知事件，可被所有相关的其他服务收到改变信息。
 
 ![](images/masternode4.PNG)
 
