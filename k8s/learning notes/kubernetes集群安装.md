@@ -259,7 +259,7 @@ kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap
 //这里pod-network-cidr指的是pod之间的通讯接口交由flannel管理，而flannel的默认网段既是10.244.0.0，第二个参数ignore-preflight-errors是用于配置关于Swap的错误请忽视的意思
 ```
 
-###### **注意**：
+##### **注意**：
 
 由于不可描述的原因，gcr.io我们是访问不了的，因此会导致如下运行失败的结果：
 
@@ -283,11 +283,152 @@ error execution phase preflight: [preflight] Some fatal errors occurred:
 
 因此在这里要么你设置虚拟机的fq代理，要么采用如下办法解决问题：
 
-###### 手动下载系统架构级pod所需镜像
+##### 手动下载系统架构级pod所需镜像
+
+###### ~~从国内镜像手动拉取image~~
 
 ```bash
+docker pull registry.aliyuncs.com/google_containers/kube-apiserver:v1.16.3
+docker pull registry.aliyuncs.com/google_containers/kube-controller-manager:v1.16.3
+docker pull registry.aliyuncs.com/google_containers/kube-scheduler:v1.16.3
+docker pull registry.aliyuncs.com/google_containers/kube-proxy:v1.16.3
+docker pull registry.aliyuncs.com/google_containers/pause:3.1
+docker pull registry.aliyuncs.com/google_containers/etcd:3.3.15-0
+docker pull registry.aliyuncs.com/google_containers/coredns:1.6.2
+```
+
+###### ~~重新给镜像打上tag~~
+
+```bash
+docker tag registry.aliyuncs.com/google_containers/kube-apiserver:v1.16.3 k8s.gcr.io/kube-apiserver:v1.16.3
+docker tag registry.aliyuncs.com/google_containers/kube-controller-manager:v1.16.3 k8s.gcr.io/kube-controller-manager:v1.16.3
+docker tag registry.aliyuncs.com/google_containers/kube-scheduler:v1.16.3 k8s.gcr.io/kube-scheduler:v1.16.3
+docker tag registry.aliyuncs.com/google_containers/kube-proxy:v1.16.3 k8s.gcr.io/kube-proxy:v1.16.3
+docker tag registry.aliyuncs.com/google_containerss/pause:3.1 k8s.gcr.io/pause:3.1
+docker tag registry.aliyuncs.com/google_containers/etcd:3.3.15-0 k8s.gcr.io/etcd:3.3.15-0
+docker tag registry.aliyuncs.com/google_containers/coredns:1.6.2 k8s.gcr.io/coredns:1.6.2
 
 ```
 
+###### 重新运行kubeadm init 命名
 
+```bash
+kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap --image-repository registry.aliyuncs.com/google_containers
+// 这里直接配置--image-repository属性就可以省略上面两个步骤
+```
+
+> 运行完毕控制台重要信息如下：
+>
+> ```bash
+> Your Kubernetes control-plane has initialized successfully!
+> 
+> To start using your cluster, you need to run the following as a regular user:
+> 
+>   mkdir -p $HOME/.kube
+>   sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+>   sudo chown $(id -u):$(id -g) $HOME/.kube/config
+> 
+> You should now deploy a pod network to the cluster.
+> Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+>   https://kubernetes.io/docs/concepts/cluster-administration/addons/
+> 
+> Then you can join any number of worker nodes by running the following on each as root:
+> 
+> //以下内容非常重要，因为当其他node想加入当前集群时，必须要输入以下命令，而其中的token需要记住的，否则查找token很麻烦
+> kubeadm join 192.168.134.101:6443 --token 6i2qot.8681dly7hrzu6ne0 --discovery-token-ca-cert-hash sha256:8533ec6c5666194ccf4d72f1f71142999c66ae8af4172ac6ee1439df9e026ba4 
+> ```
+
+#### 2.6 node加入集群
+
+##### master检查6443端口
+
+```bash
+ss -tnl
+LISTEN     0      128                                  [::]:6443
+```
+
+##### 创建隐藏目录和文件
+
+如果是root用户，输入如下命令
+
+```bash
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+```
+
+##### 查询组件状态信息
+
+```bash
+kubectl get cs 
+```
+
+#### 2.7 安装flannel
+
+查询节点信息
+
+```bash
+kubectl get nodes
+NAME        STATUS     ROLES    AGE   VERSION
+master101   NotReady   master   25m   v1.16.3
+```
+
+以上信息显示master节点状态处于NotReady，原因是因为还没有安装flannel，pod之间无法通讯
+
+##### 2.7.1安装flannel 方式1
+
+搜索github上的flannel项目https://github.com/coreos/flannel，根据文档输入以下命令
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+```
+
+显示如下信息：
+
+```bash
+podsecuritypolicy.policy/psp.flannel.unprivileged created
+clusterrole.rbac.authorization.k8s.io/flannel created
+clusterrolebinding.rbac.authorization.k8s.io/flannel created
+serviceaccount/flannel created
+configmap/kube-flannel-cfg created
+daemonset.apps/kube-flannel-ds-amd64 created
+daemonset.apps/kube-flannel-ds-arm64 created
+daemonset.apps/kube-flannel-ds-arm created
+daemonset.apps/kube-flannel-ds-ppc64le created
+daemonset.apps/kube-flannel-ds-s390x created
+```
+
+这不代表安装完了，这时候flannel安装程序在下载pod
+
+```bash
+kubectl get pods kube-system//查询pod就绪否
+```
+
+##### 2.7.2 安装flannel 方式2
+
+由于众所周知的原因，当执行方式1命令时，有可能quay.io被墙，导致flannel安装过程中一直无法下载到image，因此需要如下动作
+
+在宿主机上翻墙，下载https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml文件至本地
+
+将kube-flannel中的所有quay.io替换为quay-mirror.qiniu.com或quay.azk8s.cn，改变镜像服务地址
+
+将文件拷贝至虚拟机
+
+```bash
+scp kube-flannel.yml root@master101:/opt
+```
+
+虚拟机中执行如下命令
+
+```bash
+kubectl apply -f  kube-flannel.yml
+```
+
+待镜像下载完后，执行如下命令查看结果
+
+```bash
+kubectl get pods kube-system//查询pod就绪否
+
+kube-flannel-ds-amd64-mth9f         1/1     Running   0          10m 
+//出现这行时，代表flannel配置运行成功
+```
 
