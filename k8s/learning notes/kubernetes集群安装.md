@@ -184,6 +184,19 @@ scp /usr/lib/systemd/system/docker.service node103:/usr/lib/systemd/system/
 
 > ~~分割线中内容以失效，直接跳到下面步骤~~
 
+##### 配置docker国内镜像加速器
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://p3jtjl41.mirror.aliyuncs.com"]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
 ##### 启动docker
 
 ```bash
@@ -431,4 +444,102 @@ kubectl get pods kube-system//查询pod就绪否
 kube-flannel-ds-amd64-mth9f         1/1     Running   0          10m 
 //出现这行时，代表flannel配置运行成功
 ```
+
+#### 2.8 namespace名称空间
+
+输入命令：```kubectl get namespace```，结果：
+
+```bash
+default           Active   18h
+kube-node-lease   Active   18h
+kube-public       Active   18h
+kube-system       Active   18h
+```
+
+Namespace是对一组资源和对象的抽象集合，比如可以用来将系统内部的对象划分为不同的项目组或用户组。常见的pods, services, replication controllers和deployments等都是属于某一个namespace的（默认是default），而node, persistentVolumes等则不属于任何namespace。
+
+Namespace常用来隔离不同的用户，比如Kubernetes自带的服务一般运行在kube-system namespace中。
+
+#### 2.9 node节点操作
+
+​	此时master节点的配置基本，完成，我们可以将node节点加入到集群中
+
+##### 2.9.1 准备工作
+
+###### 拷贝docker资源
+
+​	将/etc/docker/daemon.json拷贝至node
+
+```bash
+// master终端上操作
+scp /etc/docker/daemon.json node102:/etc/docker/daemon.json
+scp /etc/docker/daemon.json node103:/etc/docker/daemon.json
+
+//node终端上操作
+systemctl daemon-reload
+systemctl start docker 
+systemctl enable docker 
+```
+
+###### 拷贝kubelet配置文件
+
+​	kubelet由于设置了额外的忽略Swap的配置项，因此需要拷贝配置文件至node
+
+```bash
+// master 终端上操作
+scp /etc/sysconfig/kubelet node102:/etc/sysconfig/
+scp /etc/sysconfig/kubelet node103:/etc/sysconfig/
+
+//node 终端上操作
+systemctl enable kubelet
+```
+
+###### 执行kubeadm join命令
+
+​	将master 中kubeadm init 命令成功后给出的提示命令在node中输入
+
+```bash
+kubeadm join 192.168.134.101:6443 --token 6i2qot.8681dly7hrzu6ne0 --discovery-token-ca-cert-hash sha256:8533ec6c5666194ccf4d72f1f71142999c66ae8af4172ac6ee1439df9e026ba4 --ignore-preflight-errors=Swap
+```
+
+##### 2.9.2 检查集群运行状态
+
+在master节点输入命令
+
+```
+kubectl get nodes
+```
+
+结果如下代表集群就绪
+
+```bash
+NAME        STATUS   ROLES    AGE    VERSION
+master101   Ready    master   19h    v1.16.3
+node102     Ready    <none>   103s   v1.16.3
+node103     Ready    <none>   31s    v1.16.3
+```
+
+> 当在node 中输入kubeadm join命令后，不代表node已经加入到k8s集群中，因为集群也需要下载系统架构级的pod：kube-proxy flannel pause。当node节点下载完并运行了pod后，这时候才进入到Ready状态
+
+输入命令查看集群所有的pods
+
+```bash
+kubectl get pods -n kube-system -o wide
+----------------------------------
+NAME                                READY   STATUS    RESTARTS   AGE     IP                NODE        NOMINATED NODE   READINESS GATES
+coredns-58cc8c89f4-8bsr8            1/1     Running   1          19h     10.244.0.5        master101   <none>           <none>
+coredns-58cc8c89f4-s225c            1/1     Running   1          19h     10.244.0.4        master101   <none>           <none>
+etcd-master101                      1/1     Running   2          19h     192.168.134.101   master101   <none>           <none>
+kube-apiserver-master101            1/1     Running   2          19h     192.168.134.101   master101   <none>           <none>
+kube-controller-manager-master101   1/1     Running   2          19h     192.168.134.101   master101   <none>           <none>
+kube-flannel-ds-amd64-mth9f         1/1     Running   1          18h     192.168.134.101   master101   <none>           <none>
+kube-flannel-ds-amd64-xvfzh         1/1     Running   0          7m52s   192.168.134.103   node103     <none>           <none>
+kube-flannel-ds-amd64-zzskq         1/1     Running   0          9m4s    192.168.134.102   node102     <none>           <none>
+kube-proxy-4p2mq                    1/1     Running   0          9m4s    192.168.134.102   node102     <none>           <none>
+kube-proxy-kxl4m                    1/1     Running   0          7m52s   192.168.134.103   node103     <none>           <none>
+kube-proxy-m9wmq                    1/1     Running   2          19h     192.168.134.101   master101   <none>           <none>
+kube-scheduler-master101            1/1     Running   2          19h     192.168.134.101   master101   <none>           <none>
+```
+
+可以发现，这时候pods中由三个flannel，三个proxy在运行，显然这是node上的pods
 
