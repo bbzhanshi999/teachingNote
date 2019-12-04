@@ -101,7 +101,7 @@ service network.service restart
 
 ```bash
 vi /etc/hosts
-192.168.134.1 main
+192.168.134.1 mother
 192.168.134.101 master101
 192.168.134.102 node102
 192.168.134.103 node103
@@ -124,7 +124,7 @@ ntpdate 0.cn.pool.ntp.org
 ```bash
 //root 用户登录
 cd /etc/yum.repos.d/
-wget https://mirrors.aliyun.com/dockerce/linux/centos/docker-ce.repo
+wget https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
 ```
 
 ##### 2.1.2 kubernetes镜像
@@ -132,7 +132,7 @@ wget https://mirrors.aliyun.com/dockerce/linux/centos/docker-ce.repo
 ```bash
 //root登录
 cd /etc/yum.repos.d/
-vi kubernetes.repo
+vim kubernetes.repo
 
 [kubernetes]
 name=Kubernetes
@@ -223,6 +223,18 @@ cat /proc/sys/net/bridge/bridge-nf-call-ip6tables
 ->1
 ```
 
+如果不为1，通过如下命令修改
+
+```bash
+/etc/sysctl.conf <<'EOF'
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+sysctl -p
+systemctl daemon-reload
+systemctl restart docker
+```
+
 ##### 设置docker开机自启动
 
 ```bash
@@ -265,7 +277,7 @@ systemctl enable kubelet
 kubeadm init --help
 ```
 
-init命令
+~~init命令~~
 
 ```bash
 kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap
@@ -351,7 +363,20 @@ kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap --i
 > kubeadm join 192.168.134.101:6443 --token 6i2qot.8681dly7hrzu6ne0 --discovery-token-ca-cert-hash sha256:8533ec6c5666194ccf4d72f1f71142999c66ae8af4172ac6ee1439df9e026ba4 
 > ```
 
-#### 2.6 node加入集群
+> 如果忘记了token和ca hash
+>
+> ```bash
+> kubeadm token list  | awk -F" " '{print $1}' |tail -n 1 //获取token
+> zzd4im.reqma5o3xyio7k61
+> 
+> openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed  's/^ .* //'
+> //获取CA公钥的哈希值
+> (stdin)= 3f706a5da4c3a16fb76dbec67653532d49e444219fdd9abfc3642d5ef20ae74b
+> ```
+>
+> 
+
+#### 2.6 node加入集群准备
 
 ##### master检查6443端口
 
@@ -387,7 +412,7 @@ master101   NotReady   master   25m   v1.16.3
 
 以上信息显示master节点状态处于NotReady，原因是因为还没有安装flannel，pod之间无法通讯
 
-##### 2.7.1安装flannel 方式1
+##### ~~2.7.1安装flannel 方式1~~
 
 搜索github上的flannel项目https://github.com/coreos/flannel，根据文档输入以下命令
 
@@ -439,7 +464,7 @@ kubectl apply -f  kube-flannel.yml
 待镜像下载完后，执行如下命令查看结果
 
 ```bash
-kubectl get pods kube-system//查询pod就绪否
+kubectl get pods -n kube-system//查询pod就绪否
 
 kube-flannel-ds-amd64-mth9f         1/1     Running   0          10m 
 //出现这行时，代表flannel配置运行成功

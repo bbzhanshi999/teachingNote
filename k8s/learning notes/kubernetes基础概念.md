@@ -7,7 +7,7 @@
 - 自助式Pod（手工管理，不建议使用）
 - 控制器管理的Pod
   - ReplicationController：用于控制pod的创建，运行，维护，更新，支持滚动更新。
-  - ReplicaSet：
+  - ReplicaSet：ReplicaSet是下一代的副本控制器。ReplicaSet和Replication Controller之间的唯一区别是Replication Controller只支持基于等式的selector（env=dev，或environment!=qa），而ReplicaSet除了支持基于等式的selector之外，还支持基于集合的selector（version in (v1.0, v2.0)或env notin (dev, qa)）。官方推荐使用ReplicaSet。
   - Deployment：只能负责管理无状态的应用，使用最多得控制器
     - HPA（HorizontalPodAutoscaler）:水平动态扩展控制器，自动监控流量负载，计算扩展数量，进行扩展。
   - StatefulSet：管理有状态的应用，例如数据服务
