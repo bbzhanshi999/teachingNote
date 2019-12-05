@@ -31,7 +31,7 @@
 2. 时间同步：
 
    ```bash
-   ntpdate 0.cn.pool.ntp.org
+   $ ntpdate 0.cn.pool.ntp.org
    ```
 
 3. 关闭firewalld和iptables.service
@@ -71,36 +71,46 @@
 
 #### 1.1 安装vmware安装centos7，生成三台
 
+虚拟机配置：
+
+|         | 内存 | 硬盘 | cpu  |
+| ------- | ---- | ---- | ---- |
+| master  | 4g   | 30gb | 4    |
+| node102 | 2g   | 20gb | 2    |
+| node103 | 2g   | 20gb | 2    |
+
 > 安装虚拟机略过,**cpu必须两颗**
 
 1. 安装ntp和ntpdate服务
 
    ```bash
-   yum install -y ntp ntpdate
+   $ yum install -y ntp ntpdate
    ```
 
 2. 关闭防火墙服务和自启动
 
    ```bash
-   systemctl stop firewalld.service
-   systemctl disable firewalld.service
+   $ systemctl stop firewalld.service
+   $ systemctl disable firewalld.service
    ```
 
 #### 1.2 配置虚拟机静态ip和主机名（三台都需要）
 
 ```bash
 //配置静态ip
-vi /etc/sysconfig/network-scripts/ifcfg-ens33
+$ vi /etc/sysconfig/network-scripts/ifcfg-ens33
+--------------------------------
 BOOTPROTO=none
 IPADDR=192.168.134.xxx
 DNS1=114.114.114.114
 NETMASK=255.255.255.0
 
-service network.service restart
+$ service network.service restart
 ```
 
 ```bash
-vi /etc/hosts
+$ vi /etc/hosts
+-----------------------
 192.168.134.1 mother
 192.168.134.101 master101
 192.168.134.102 node102
@@ -110,7 +120,7 @@ vi /etc/hosts
 #### 1.3 配置时间同步（三台都需要）
 
 ```bash
-ntpdate 0.cn.pool.ntp.org
+$ ntpdate 0.cn.pool.ntp.org
 ```
 
 ### 2.k8s docker安装
@@ -123,16 +133,16 @@ ntpdate 0.cn.pool.ntp.org
 
 ```bash
 //root 用户登录
-cd /etc/yum.repos.d/
-wget https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+$ cd /etc/yum.repos.d/
+$ wget https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
 ```
 
 ##### 2.1.2 kubernetes镜像
 
 ```bash
 //root登录
-cd /etc/yum.repos.d/
-vim kubernetes.repo
+$ cd /etc/yum.repos.d/
+$ vim kubernetes.repo
 
 [kubernetes]
 name=Kubernetes
@@ -146,14 +156,14 @@ gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors
 > 以上两个镜像repo配置完后，复制给另外两个节点
 >
 > ```bash
-> scp kubernetes.repo docker-ce.repo node103:/etc/yum.repos.d/
-> scp kubernetes.repo docker-ce.repo node102:/etc/yum.repos.d/
+> $ scp kubernetes.repo docker-ce.repo node103:/etc/yum.repos.d/
+> $ scp kubernetes.repo docker-ce.repo node102:/etc/yum.repos.d/
 > ```
 
 #### 2.2  yum安装（所有节点）
 
 ```bash
-yum install -y docker-ce kubeadm kubelet kubectl
+$ yum install -y docker-ce kubeadm kubelet kubectl
 ```
 
 #### 2.3  启动docker
@@ -167,7 +177,7 @@ yum install -y docker-ce kubeadm kubelet kubectl
 ~~*启动之前，由于k8s要去仓库中下载k8s相关镜像，例如kubelet 等， 因此由于墙的愿因，需要配置代理*~~
 
 ```bash
-vi /usr/lib/systemd/system/docker.service
+$ vi /usr/lib/systemd/system/docker.service
 //在Type=notify后插入
 Environment="HTTPS_PROXY=http://www.ik8s.io:10080"
 Environment="NO_PROXY=127.0.0.0/8,192.168.134.0/16"
@@ -176,8 +186,8 @@ Environment="NO_PROXY=127.0.0.0/8,192.168.134.0/16"
 ##### ~~*拷贝至node*~~
 
 ```bash
-scp /usr/lib/systemd/system/docker.service node102:/usr/lib/systemd/system/
-scp /usr/lib/systemd/system/docker.service node103:/usr/lib/systemd/system/
+$ scp /usr/lib/systemd/system/docker.service node102:/usr/lib/systemd/system/
+$ scp /usr/lib/systemd/system/docker.service node103:/usr/lib/systemd/system/
 ```
 
 ------
@@ -187,22 +197,22 @@ scp /usr/lib/systemd/system/docker.service node103:/usr/lib/systemd/system/
 ##### 配置docker国内镜像加速器
 
 ```bash
-sudo mkdir -p /etc/docker
-sudo tee /etc/docker/daemon.json <<-'EOF'
+$ sudo mkdir -p /etc/docker
+$ sudo tee /etc/docker/daemon.json <<-'EOF'
 {
   "registry-mirrors": ["https://p3jtjl41.mirror.aliyuncs.com"]
 }
 EOF
-sudo systemctl daemon-reload
-sudo systemctl restart docker
+$ sudo systemctl daemon-reload
+$ sudo systemctl restart docker
 ```
 
 ##### 启动docker
 
 ```bash
-systemctl daemon-reload //重新加载daemon
-service docker start
-docker info //检查配置是否成功
+$ systemctl daemon-reload //重新加载daemon
+$ service docker start
+$ docker info //检查配置是否成功
 -------------------------------
 Architecture: x86_64
  CPUs: 1
@@ -217,28 +227,28 @@ Architecture: x86_64
 ##### 确保桥接的iptables和ip6tables值为1
 
 ```bash
-cat /proc/sys/net/bridge/bridge-nf-call-iptables 
+$ cat /proc/sys/net/bridge/bridge-nf-call-iptables 
 ->1
-cat /proc/sys/net/bridge/bridge-nf-call-ip6tables 
+$ cat /proc/sys/net/bridge/bridge-nf-call-ip6tables 
 ->1
 ```
 
 如果不为1，通过如下命令修改
 
 ```bash
-/etc/sysctl.conf <<'EOF'
+$ /etc/sysctl.conf <<'EOF'
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 EOF
-sysctl -p
-systemctl daemon-reload
-systemctl restart docker
+$ sysctl -p
+$ systemctl daemon-reload
+$ systemctl restart docker
 ```
 
 ##### 设置docker开机自启动
 
 ```bash
-systemctl enable docker
+$ systemctl enable docker
 ```
 
 
@@ -248,15 +258,15 @@ systemctl enable docker
 > 早期k8s版本不允许主机节点使用swap虚拟内存交换，因此需要通过修改kubelet的额外配置忽略这一点
 >
 > ```bash
-> rpm -ql kubelet //检查kubelet的安装文件目录
-> 
+> $ rpm -ql kubelet //检查kubelet的安装文件目录
+> --------------------------------------------
 > /etc/kubernetes/manifests
 > /etc/sysconfig/kubelet
 > /usr/bin/kubelet
 > /usr/lib/systemd/system/kubelet.service
 > 
-> cat /etc/sysconfig/kubelet
-> 
+> $cat /etc/sysconfig/kubelet
+> ------------------------
 > KUBELET EXTRA ARGS=
 > 
 > //这里需要修改KUBELET EXTRA ARGS
@@ -266,7 +276,7 @@ systemctl enable docker
 ##### 设置开机启动服务
 
 ```bash
-systemctl enable kubelet
+$ systemctl enable kubelet
 ```
 
 #### 2.5 初始化kubeadm
@@ -274,13 +284,13 @@ systemctl enable kubelet
 查询下kubeadm命令
 
 ```bash
-kubeadm init --help
+$ kubeadm init --help
 ```
 
 ~~init命令~~
 
 ```bash
-kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap
+$ kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap
 //这里pod-network-cidr指的是pod之间的通讯接口交由flannel管理，而flannel的默认网段既是10.244.0.0，第二个参数ignore-preflight-errors是用于配置关于Swap的错误请忽视的意思
 ```
 
@@ -313,32 +323,32 @@ error execution phase preflight: [preflight] Some fatal errors occurred:
 ###### ~~从国内镜像手动拉取image~~
 
 ```bash
-docker pull registry.aliyuncs.com/google_containers/kube-apiserver:v1.16.3
-docker pull registry.aliyuncs.com/google_containers/kube-controller-manager:v1.16.3
-docker pull registry.aliyuncs.com/google_containers/kube-scheduler:v1.16.3
-docker pull registry.aliyuncs.com/google_containers/kube-proxy:v1.16.3
-docker pull registry.aliyuncs.com/google_containers/pause:3.1
-docker pull registry.aliyuncs.com/google_containers/etcd:3.3.15-0
-docker pull registry.aliyuncs.com/google_containers/coredns:1.6.2
+$ docker pull registry.aliyuncs.com/google_containers/kube-apiserver:v1.16.3
+$ docker pull registry.aliyuncs.com/google_containers/kube-controller-manager:v1.16.3
+$ docker pull registry.aliyuncs.com/google_containers/kube-scheduler:v1.16.3
+$ docker pull registry.aliyuncs.com/google_containers/kube-proxy:v1.16.3
+$ docker pull registry.aliyuncs.com/google_containers/pause:3.1
+$ docker pull registry.aliyuncs.com/google_containers/etcd:3.3.15-0
+$ docker pull registry.aliyuncs.com/google_containers/coredns:1.6.2
 ```
 
 ###### ~~重新给镜像打上tag~~
 
 ```bash
-docker tag registry.aliyuncs.com/google_containers/kube-apiserver:v1.16.3 k8s.gcr.io/kube-apiserver:v1.16.3
-docker tag registry.aliyuncs.com/google_containers/kube-controller-manager:v1.16.3 k8s.gcr.io/kube-controller-manager:v1.16.3
-docker tag registry.aliyuncs.com/google_containers/kube-scheduler:v1.16.3 k8s.gcr.io/kube-scheduler:v1.16.3
-docker tag registry.aliyuncs.com/google_containers/kube-proxy:v1.16.3 k8s.gcr.io/kube-proxy:v1.16.3
-docker tag registry.aliyuncs.com/google_containerss/pause:3.1 k8s.gcr.io/pause:3.1
-docker tag registry.aliyuncs.com/google_containers/etcd:3.3.15-0 k8s.gcr.io/etcd:3.3.15-0
-docker tag registry.aliyuncs.com/google_containers/coredns:1.6.2 k8s.gcr.io/coredns:1.6.2
+$ docker tag registry.aliyuncs.com/google_containers/kube-apiserver:v1.16.3 k8s.gcr.io/kube-apiserver:v1.16.3
+$ docker tag registry.aliyuncs.com/google_containers/kube-controller-manager:v1.16.3 k8s.gcr.io/kube-controller-manager:v1.16.3
+$ docker tag registry.aliyuncs.com/google_containers/kube-scheduler:v1.16.3 k8s.gcr.io/kube-scheduler:v1.16.3
+$ docker tag registry.aliyuncs.com/google_containers/kube-proxy:v1.16.3 k8s.gcr.io/kube-proxy:v1.16.3
+$ docker tag registry.aliyuncs.com/google_containerss/pause:3.1 k8s.gcr.io/pause:3.1
+$ docker tag registry.aliyuncs.com/google_containers/etcd:3.3.15-0 k8s.gcr.io/etcd:3.3.15-0
+$ docker tag registry.aliyuncs.com/google_containers/coredns:1.6.2 k8s.gcr.io/coredns:1.6.2
 
 ```
 
 ###### 重新运行kubeadm init 命名
 
 ```bash
-kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap --image-repository registry.aliyuncs.com/google_containers
+$ kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap --image-repository registry.aliyuncs.com/google_containers
 // 这里直接配置--image-repository属性就可以省略上面两个步骤
 ```
 
@@ -366,10 +376,10 @@ kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap --i
 > 如果忘记了token和ca hash
 >
 > ```bash
-> kubeadm token list  | awk -F" " '{print $1}' |tail -n 1 //获取token
+> $ kubeadm token list  | awk -F" " '{print $1}' |tail -n 1 //获取token
 > zzd4im.reqma5o3xyio7k61
 > 
-> openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed  's/^ .* //'
+> $ openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed  's/^ .* //'
 > //获取CA公钥的哈希值
 > (stdin)= 3f706a5da4c3a16fb76dbec67653532d49e444219fdd9abfc3642d5ef20ae74b
 > ```
@@ -381,7 +391,7 @@ kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=Swap --i
 ##### master检查6443端口
 
 ```bash
-ss -tnl
+$ ss -tnl
 LISTEN     0      128                                  [::]:6443
 ```
 
@@ -390,14 +400,14 @@ LISTEN     0      128                                  [::]:6443
 如果是root用户，输入如下命令
 
 ```bash
-mkdir -p $HOME/.kube
+$ mkdir -p $HOME/.kube
 cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 ```
 
 ##### 查询组件状态信息
 
 ```bash
-kubectl get cs 
+$ kubectl get cs 
 ```
 
 #### 2.7 安装flannel
@@ -405,7 +415,7 @@ kubectl get cs
 查询节点信息
 
 ```bash
-kubectl get nodes
+$ kubectl get nodes
 NAME        STATUS     ROLES    AGE   VERSION
 master101   NotReady   master   25m   v1.16.3
 ```
@@ -417,7 +427,7 @@ master101   NotReady   master   25m   v1.16.3
 搜索github上的flannel项目https://github.com/coreos/flannel，根据文档输入以下命令
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+$ kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
 ```
 
 显示如下信息：
@@ -438,7 +448,7 @@ daemonset.apps/kube-flannel-ds-s390x created
 这不代表安装完了，这时候flannel安装程序在下载pod
 
 ```bash
-kubectl get pods kube-system//查询pod就绪否
+$ kubectl get pods kube-system//查询pod就绪否
 ```
 
 ##### 2.7.2 安装flannel 方式2
@@ -452,19 +462,19 @@ kubectl get pods kube-system//查询pod就绪否
 将文件拷贝至虚拟机
 
 ```bash
-scp kube-flannel.yml root@master101:/opt
+$ scp kube-flannel.yml root@master101:/opt
 ```
 
 虚拟机中执行如下命令
 
 ```bash
-kubectl apply -f  kube-flannel.yml
+$ kubectl apply -f  kube-flannel.yml
 ```
 
 待镜像下载完后，执行如下命令查看结果
 
 ```bash
-kubectl get pods -n kube-system//查询pod就绪否
+$ kubectl get pods -n kube-system//查询pod就绪否
 
 kube-flannel-ds-amd64-mth9f         1/1     Running   0          10m 
 //出现这行时，代表flannel配置运行成功
@@ -497,13 +507,13 @@ Namespace常用来隔离不同的用户，比如Kubernetes自带的服务一般�
 
 ```bash
 // master终端上操作
-scp /etc/docker/daemon.json node102:/etc/docker/daemon.json
-scp /etc/docker/daemon.json node103:/etc/docker/daemon.json
+$ scp /etc/docker/daemon.json node102:/etc/docker/daemon.json
+$ scp /etc/docker/daemon.json node103:/etc/docker/daemon.json
 
 //node终端上操作
-systemctl daemon-reload
-systemctl start docker 
-systemctl enable docker 
+$ systemctl daemon-reload
+$ systemctl start docker 
+$ systemctl enable docker 
 ```
 
 ###### 拷贝kubelet配置文件
@@ -512,11 +522,11 @@ systemctl enable docker
 
 ```bash
 // master 终端上操作
-scp /etc/sysconfig/kubelet node102:/etc/sysconfig/
-scp /etc/sysconfig/kubelet node103:/etc/sysconfig/
+$ scp /etc/sysconfig/kubelet node102:/etc/sysconfig/
+$ scp /etc/sysconfig/kubelet node103:/etc/sysconfig/
 
 //node 终端上操作
-systemctl enable kubelet
+$ systemctl enable kubelet
 ```
 
 ###### 执行kubeadm join命令
@@ -524,15 +534,15 @@ systemctl enable kubelet
 ​	将master 中kubeadm init 命令成功后给出的提示命令在node中输入
 
 ```bash
-kubeadm join 192.168.134.101:6443 --token 6i2qot.8681dly7hrzu6ne0 --discovery-token-ca-cert-hash sha256:8533ec6c5666194ccf4d72f1f71142999c66ae8af4172ac6ee1439df9e026ba4 --ignore-preflight-errors=Swap
+$ kubeadm join 192.168.134.101:6443 --token 6i2qot.8681dly7hrzu6ne0 --discovery-token-ca-cert-hash sha256:8533ec6c5666194ccf4d72f1f71142999c66ae8af4172ac6ee1439df9e026ba4 --ignore-preflight-errors=Swap
 ```
 
 ##### 2.9.2 检查集群运行状态
 
 在master节点输入命令
 
-```
-kubectl get nodes
+```bash
+$ kubectl get nodes
 ```
 
 结果如下代表集群就绪
@@ -549,7 +559,7 @@ node103     Ready    <none>   31s    v1.16.3
 输入命令查看集群所有的pods
 
 ```bash
-kubectl get pods -n kube-system -o wide
+$ kubectl get pods -n kube-system -o wide
 ----------------------------------
 NAME                                READY   STATUS    RESTARTS   AGE     IP                NODE        NOMINATED NODE   READINESS GATES
 coredns-58cc8c89f4-8bsr8            1/1     Running   1          19h     10.244.0.5        master101   <none>           <none>
