@@ -1,4 +1,4 @@
-# Kubernetes Pod控制器应用进阶
+# Kubernetes Pod应用进阶
 
 ​	上节中，我们通过资源清单创建的pod是自主式pod，也就是不受控制器控制的pod，其实大部分的资源清单具有以下特点
 
