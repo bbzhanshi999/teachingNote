@@ -301,3 +301,238 @@
 - liveness：存活性探测
 - readiness： 就绪性探测
 
+## 健康状态监测
+
+​	3.2中已经介绍了监测容器健康状态的两种形式，存活性监测和就绪性监测，其实这两种都是利用了探针来进行监测，无非就是探测容器的网络状况，cpu和内存状况，进程是否正常等。
+
+### 1. 探针的种类
+
+- livenessProbe探针：用于判断容器是否存活，如果LivenessProbe探针探测到容器不健康， 则kubelet将杀掉该容
+  器， 并根据容器的重启策略做相应的处理。 如果一个容器不包含LivenessProbe探针， 那么kubelet认为该容器的LivenessProbe探针返回的值永远是Success。  
+- ReadinessProbe探针： 用于判断容器服务是否可用（Ready状态） ， 达到Ready状态的Pod才可以接收请求。 对于被Service管理的Pod， Service与Pod Endpoint的关联关系也将基于Pod是否Ready进行设置。 如果在运行过程中Ready状态变为False， 则系统自动将其从Service的后端Endpoint列表中隔离出去， 后续再把恢复到Ready状态的Pod加回后端Endpoint列表。 这样就能保证客户端在访问Service时不会被转发到服务不可用的Pod实例上。  
+
+### 2. 探针实现的方式
+
+- ExecAction： 在容器内部执行一个命令， 如果该命令的返回码为0， 则表明容器健康。  
+- TCPSocketAction： 通过容器的IP地址和端口号执行TCP检查， 如果能够建立TCP连接， 则表明容器健康。  
+- HTTPGetAction： 通过容器的IP地址、 端口号及路径调用HTTP Get方法， 如果响应的状态码大于等于200且小于400， 则认为容器健康 。
+
+### 3. livenessPobe
+
+要设置livenessPobe 需要设置的参数为pods.spec.containers.livenessProbe
+
+```bash
+$ kubectl explain pods.spec.containers.livenessProbe
+----------------------------
+FIELDS:
+   exec <Object>
+     One and only one of the following should be specified. Exec specifies the
+     action to take.
+   //需要执行的探测动作
+   failureThreshold     <integer>
+     Minimum consecutive failures for the probe to be considered failed after
+     having succeeded. Defaults to 3. Minimum value is 1.
+  //探测几次不成功算失败
+   httpGet      <Object>
+     HTTPGet specifies the http request to perform.
+
+   initialDelaySeconds  <integer>
+     Number of seconds after the container has started before liveness probes
+     are initiated. More info:
+     https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+  //第一次探测要延迟多长时间，往往要等主容器执行后过一段使劲踩探测
+   periodSeconds        <integer>
+     How often (in seconds) to perform the probe. Default to 10 seconds. Minimum
+     value is 1.
+  // 每一次探测间隔多长时间
+   successThreshold     <integer>
+     Minimum consecutive successes for the probe to be considered successful
+     after having failed. Defaults to 1. Must be 1 for liveness and startup.
+     Minimum value is 1.
+
+   tcpSocket    <Object>
+     TCPSocket specifies an action involving a TCP port. TCP hooks not yet
+     supported
+  //tcp探测方式，多用于web应用
+   timeoutSeconds       <integer>
+     Number of seconds after which the probe times out. Defaults to 1 second.
+     Minimum value is 1. More info:
+     https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+```
+
+#### 3.1 exec 探针执行逻辑
+
+```bash
+$ kubectl explain  pods.spec.containers.livenessProbe.exec
+----------------------------------
+DESCRIPTION:
+     One and only one of the following should be specified. Exec specifies the
+     action to take.
+
+     ExecAction describes a "run in container" action.
+
+FIELDS:
+   command      <[]string>
+     Command is the command line to execute inside the container, the working
+     directory for the command is root ('/') in the container's filesystem. The
+     command is simply exec'd, it is not run inside a shell, so traditional
+     shell instructions ('|', etc) won't work. To use a shell, you need to
+     explicitly call out to that shell. Exit status of 0 is treated as
+     live/healthy and non-zero is unhealthy.
+```
+
+可见，通过command运行的命令来检测是否存活。
+
+##### execAction例子
+
+```bash
+$ vim liveness-exec.yaml
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-exec-pod
+  namespace: default
+spec:
+  containers:
+  - name: liveness-exec-container
+    image: busybox:latest
+    imagePullPolicy: IfNotPresent
+    command: ["/bin/sh","-c","touch /temp/healthy; sleep 30; rm -rf /tmp/healthy; sleep 3600"]
+    livenessProbe:
+      exec:
+        command: ["test","-e","/tmp/healthy"]
+      initialDelaySeconds: 2
+      periodSeconds: 3
+```
+
+```bash
+$ kubectl create -f liveness-exec.yaml
+$ kubectl describe pods liveness-exec-pod
+-----------------------
+Last State:     Terminated
+      Reason:       Error
+      Exit Code:    137
+      Started:      Sun, 08 Dec 2019 09:47:01 -0500
+      Finished:     Sun, 08 Dec 2019 09:47:40 -0500
+    Ready:          True
+    Restart Count:  4
+    Liveness:       exec [test -e /tmp/healthy] delay=2s timeout=1s period=3s #success=1 #failure=3
+```
+
+可以发现pod已经重启了4次，因为探测动作失败，获取不到/tmp/healthy文件，因此，判定存活失败，这时候按照默认的restartPolicy：Always，就会一直重新去创建pod
+
+#### 3.2 TCPSocketAction探测执行逻辑
+
+```bash
+$ kubectl explain  pods.spec.containers.livenessProbe.tcpSocket
+----------------------------------------
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: tcpSocket <Object>
+
+DESCRIPTION:
+     TCPSocket specifies an action involving a TCP port. TCP hooks not yet
+     supported
+
+     TCPSocketAction describes an action based on opening a socket
+
+FIELDS:
+   host <string>
+     Optional: Host name to connect to, defaults to the pod IP.
+  //默认的主机就是当前pod的ip
+   port <string> -required-
+     Number or name of the port to access on the container. Number must be in
+     the range 1 to 65535. Name must be an IANA_SVC_NAME.
+ //端口号
+```
+
+可以看见，这个就是向pod中的web服务发送套接字，来看是否有返回数据，
+
+#### 3.2 HTTPGetAction探测执行逻辑
+
+```bash
+$ kubectl explain  pods.spec.containers.livenessProbe.httpGet
+---------------------
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: httpGet <Object>
+
+DESCRIPTION:
+     HTTPGet specifies the http request to perform.
+
+     HTTPGetAction describes an action based on HTTP Get requests.
+
+FIELDS:
+   host <string>
+     Host name to connect to, defaults to the pod IP. You probably want to set
+     "Host" in httpHeaders instead.
+
+   httpHeaders  <[]Object>
+     Custom headers to set in the request. HTTP allows repeated headers.
+
+   path <string>
+     Path to access on the HTTP server.
+  //请求路径
+   port <string> -required-
+     Name or number of the port to access on the container. Number must be in
+     the range 1 to 65535. Name must be an IANA_SVC_NAME.
+	//这里可用端口名称的方式，就可以省略端口号
+   scheme       <string>
+     Scheme to use for connecting to the host. Defaults to HTTP.
+```
+
+##### httpGet例子：
+
+```bash
+$ vim liveness-httpGet.yaml
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-httpget-pod
+  namespace: default
+spec:
+  containers:
+  - name: liveness-httpget-container
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+    command: ["/bin/sh","-c","touch /temp/healthy; sleep 30; rm -rf /tmp/healthy; sleep 3600"]
+    ports:
+    - name: http
+      containerPort: 80
+    livenessProbe:
+      httpGet:
+        path: /index.html
+        port: http
+      initialDelaySeconds: 2
+      periodSeconds: 3
+```
+
+```bash
+$ kubectl create -f liveness-httpGet.yaml
+$ kubectl describe pods liveness-httpGet-pod
+--------------------
+//显示正常信息
+```
+
+人为删除index.html
+
+```bash
+$ kubectl exec -it liveness-httpget-pod -- /bin/sh
+
+/ # rm -f /usr/share/nginx/html/index.html
+/ # exit
+$ kubectl describe pods liveness-httpGet-pod
+--------------------
+Restart Count:  2
+    Liveness:       http-get http://:http/index.html delay=2s timeout=1s period=3s #success=1 #failure=3
+```
+
+可见当你删除文件后，重启了1次
