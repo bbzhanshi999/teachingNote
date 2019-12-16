@@ -536,3 +536,153 @@ Restart Count:  2
 ```
 
 可见当你删除文件后，重启了1次
+
+### 4. ReadinessProbe
+
+​	readinessProbe是用于确认pod是否为Ready状态，默认的就绪性探测是只要pod类的容器启动了，那么这时候pod的状态就会被设置成Ready，这时候，假定容器中的真正的服务进程还没启动，例如mysql还没启动时，如果有客户端请求服务的话，那么服务显然是不能正常工作的。
+
+​	因此，通过自定义的readinessProbe，我们可以定义当服务进程真正启动时，才会触发pod状态进入到Ready。
+
+> ReadinessProbe和livenessProbe的探针方式是一样的
+
+#### 3.1 httpGet例子
+
+```bash
+$ vim readiness-httpget.yaml
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readiness-httpget-pod
+  namespace: default
+spec:
+  containers:
+  - name: readiness-httpget-container
+    image: nginx:1.14-alpine
+    imagePullPolicy: IfNotPresent
+    ports:
+    - name: http
+      containerPort: 80
+    readinessProbe:
+      httpGet:
+        path: /index.html
+        port: http
+      initialDelaySeconds: 2
+      periodSeconds: 3
+```
+
+```bash
+$ kubectl create -f  readiness-httpget.yaml
+//故意删除index,html
+$ kubectl exec -it readiness-httpget-pod  /bin/sh
+/ # rm -f /usr/share/nginx/html/index.html
+/ # exit
+$ kubectl get pods
+NAME                    READY   STATUS    RESTARTS   AGE
+readiness-httpget-pod   0/1     Running   0          6m52s
+```
+
+可以发现，当你删除index.html后，pod的状态由于就绪性监测会发现获取不到数据了，那么pod就不再是Ready状态
+
+```bash
+$ kubectl exec -it readiness-httpget-pod  /bin/sh
+/ # echo "haha" >> /usr/share/nginx/html/index.html
+```
+
+通过以上操作，将index.html恢复后，pod状态又会回到Ready
+
+### 5.lifecycle 生命周期钩子
+
+```bash
+$ kubectl explain pods.spec.containers.lifecycle
+------------------
+DESCRIPTION:
+     Actions that the management system should take in response to container
+     lifecycle events. Cannot be updated.
+
+     Lifecycle describes actions that the management system should take in
+     response to container lifecycle events. For the PostStart and PreStop
+     lifecycle handlers, management of the container blocks until the action is
+     complete, unless the container process fails, in which case the handler is
+     aborted.
+
+FIELDS:
+   postStart    <Object>
+     PostStart is called immediately after a container is created. If the
+     handler fails, the container is terminated and restarted according to its
+     restart policy. Other management of the container blocks until the hook
+     completes. More info:
+     https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+
+   preStop      <Object>
+     PreStop is called immediately before a container is terminated due to an
+     API request or management event such as liveness/startup probe failure,
+     preemption, resource contention, etc. The handler is not called if the
+     container crashes or exits. The reason for termination is passed to the
+     handler. The Pod's termination grace period countdown begins before the
+     PreStop hooked is executed. Regardless of the outcome of the handler, the
+     container will eventually terminate within the Pod's termination grace
+     period. Other management of the container blocks until the hook completes
+     or until the termination grace period is reached. More info:
+     https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+```
+
+从描述可见，lifecycle支持启动后postStart和终止前preStop
+
+```bash
+$ kubectl explain pods.spec.containers.lifecycle.postStart
+-----------------------
+FIELDS:
+   exec <Object>
+     One and only one of the following should be specified. Exec specifies the
+     action to take.
+
+   httpGet      <Object>
+     HTTPGet specifies the http request to perform.
+
+   tcpSocket    <Object>
+     TCPSocket specifies an action involving a TCP port. TCP hooks not yet
+     supported
+```
+
+可以发现，lifecycle支持的探针行为和readiness和liveness差不多，有三种
+
+##### 5.1 postStart例子
+
+利用busybox中的http命令，来运行一个web服务，由于没有目录和文件存在，所以我们需要在pod启动后，创建一些文件和目录，供httpd来运行，正好需要用到postStart
+
+```bash
+$ vim poststart-pod.yaml
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: poststart-pod
+  namespace: default
+spec:
+  containers:
+  - name: busybox-httpd
+    image: busybox:latest
+    imagePullPolicy: IfNotPresent
+    lifecycle:
+      postStart:
+        exec:
+          command: ['/bin/sh','-c','mkdir -p /data/web/html && echo "Home Page" >> /data/web/html/index.html']
+    command: ['/bin/sh','-c','sleep 3600']
+    # args: ['-f','-h /data/web/html']
+```
+
+> 这里注意一点，我们设置容器主进程所执行的命令直接sleep，原因是根据生命周期钩子的执行顺序，**先执行的是容器的主进程命令，而postStart钩子命令会在容器命令执行后执行**，所以，我们不可能期望先执行钩子命令，再执行主命令，因此，我们需要手动进入pod来执行httpd命令
+
+```bash
+$ kubectl exec -it poststart-pod  /bin/sh
+/# ls /data/web/html/
+-----------
+index.html
+```
+
+可以发现，这里我们在postStart中创建的文件确实生成在容器中
