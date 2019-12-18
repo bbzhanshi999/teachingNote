@@ -235,6 +235,248 @@ Image:          nginx:latest
 
 ​	Deployment建立在RS之上，除了拥有ReplicaSet的所有扩缩容功能，还具有以下扩展功能：滚动更新回滚，支持声明式配置的功能，支持随时更改，**是使用最多的控制器**。
 
+Deployment和ReplicaSet的关系如下图：
+
+​	![](images/deploy和rs关系.PNG)
+
+通过上图可以看出，deployment‘可以控制多个rs，而rs再去控制pods，因此利用deploy控制多个rs，我们可以实现蓝绿发布或者金丝雀发布。
+
+### 2.1 deployment特殊字段
+
+- paused       <boolean>
+
+  可以用于设置是否创建后暂停所有容器的**更新**
+
+- progressDeadlineSeconds      <integer>
+
+  设置deployment被部署的最长时间，如果该时间段内仍然没有启动成功的话，就会停止尝试部署
+
+- revisionHistoryLimit <integer>
+
+  设置deployment最多保存多少个pod模板的定义，默认10个
+
+- strategy
+
+  定义了deploy的滚动更新策略
+
+  - type <string>：
+
+    两种，recreate代表直接重新创建，RollingUpdate代表滚动更新，默认为RollingUpdate
+
+  - rollingUpdate        <Object>
+
+    假设type设置成了rollingUpdate，那么设置具体的滚动策略
+
+    - maxSurge     <string>
+
+      定义最多可以超过期望pod数量的个数或者百分比，如ex:5 代表可以超过5个，ex:10% 代表可以超10%
+
+    - maxUnavailable       <string>
+
+      定义最多可以有几个pod在更新时可以删除，规则同maxSurge
+
+### 2.2 例子
+
+```bash
+$ kubectl vim deploy-demo.yaml
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deploy
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+      release: canary
+  template:
+    metadata:
+      labels:
+        app: myapp
+        release: canary
+    spec:
+      containers:
+      - name: myapp
+        image: bbzhanshi999/myapp:v1
+		ports:
+        - name: http
+          containerPort: 80
+
+```
+
+通过apply声明式创建deploy
+
+```bash
+$ kubectl apply -f deploy-demo.yaml
+$ kubectl get rs
+----------------
+NAME                      DESIRED   CURRENT   READY   AGE
+myapp-deploy-6876df7786   2         2         0       9s
+$ kubectl get pods
+----------------
+NAME                            READY   STATUS    RESTARTS   AGE
+myapp-deploy-6876df7786-cwbbf   1/1     Running   0          93s
+myapp-deploy-6876df7786-lmxrp   1/1     Running   0          93s
+
+$ kubectl get deploy
+----------------------
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+myapp-deploy   2/2     2            2           2m12s
+
+$ kubectl describe deploy myapp-deploy
+----------------------
+Selector:               app=myapp,release=canary
+Replicas:               2 desired | 2 updated | 2 total | 2 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=myapp
+           release=canary
+  Containers:
+   myapp:
+    Image:        bbzhanshi999/myapp:v1
+    Port:         80/TCP
+    Host Port:    0/TCP
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   myapp-deploy-6876df7786 (2/2 replicas created)
+Events:
+  Type    Reason             Age    From                   Message
+  ----    ------             ----   ----                   -------
+  Normal  ScalingReplicaSet  5m22s  deployment-controller  Scaled up replica set myapp-deploy-6876df7786 to 2
+  
+$ curl 10.244.1.10 //访问一个pod
+-----------------
+<h1>this is a version 1 docker nginx app</h1>
+```
+
+> 以上信息可以看出其
+
+### 2.2 更新deployment
+
+​	更新deploy的方式有很多种：直接修改配置清单文件、patch 命令、set image命令修改镜像版本
+
+#### 2.2.1 修改replicas
+
+通过patch命令修改
+
+```bash
+$ kubectl patch --help
+$ kubectl patch deploy myapp-deploy -p '{"spec":{"replicas":4}}'
+$ kubectl get pods
+-----------------
+NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE      NOMINATED NODE   READINESS GATES
+myapp-deploy-6876df7786-5zdsm   1/1     Running   0          5s    10.244.1.11   node202   <none>           <none>
+myapp-deploy-6876df7786-cwbbf   1/1     Running   0          12m   10.244.1.10   node202   <none>           <none>
+myapp-deploy-6876df7786-lmxrp   1/1     Running   0          12m   10.244.2.13   node203   <none>           <none>
+myapp-deploy-6876df7786-z994d   1/1     Running   0          5s    10.244.2.14   node203   <none>           <none>
+```
+
+#### 2.2.2 修改镜像
+
+修改镜像版本至第二版
+
+```bash
+$ kubectl set image --help
+$ kubectl set image deploy myapp-deploy myapp=registry.cn-hangzhou.aliyuncs.com/zhaoqianli/myapp:v2
+```
+
+监视更新情况：
+
+```bash
+$ kubectl get pods -w
+------------------
+NAME                            READY   STATUS              RESTARTS   AGE
+myapp-deploy-6876df7786-5zdsm   0/1     Terminating         0          4m
+myapp-deploy-6876df7786-cwbbf   1/1     Running             0          16m
+myapp-deploy-6876df7786-lmxrp   1/1     Running             0          16m
+myapp-deploy-6876df7786-z994d   1/1     Running             0          4m
+myapp-deploy-6df9487875-56kzq   0/1     ContainerCreating   0          7s
+myapp-deploy-6df9487875-xfxr4   0/1     ContainerCreating   0          7s
+myapp-deploy-6876df7786-5zdsm   0/1     Terminating         0          4m6s
+myapp-deploy-6876df7786-5zdsm   0/1     Terminating         0          4m6s
+```
+
+说明已经更新成功，再插卡rs的版本
+
+```bash
+$ kubectl get rs
+-------------------
+myapp-deploy-6876df7786   0         0         0       24m
+myapp-deploy-6df9487875   0         0         0       8m35s
+myapp-deploy-75cd96c97b   4         4         4       2m26s
+```
+
+可见已经有三个版本的rs了，再通过rollout命令查看
+
+```bash
+$ kubectl rollout --help
+$ kubectl rollout history deployment/myapp-deploy
+------------
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+3         <none>
+```
+
+可以看出，目前确实保存了三个版本
+
+### 2.3 配置金丝雀更新
+
+想要实现以金丝雀的方式进行更新，需要利用到rollout pause命令,并且设置maxSurge为1，maxUnavailable 为0
+
+```bash
+$ vim deploy-demo.yaml
+-----------------------
+maxSurage: 1
+maxUnavailable: 0
+
+$ kubectl apply -f deploy-demo.yaml
+```
+
+输入以下命令进行更新
+
+```bash
+$ kubectl set image deploy myapp-deploy myapp=nginx:1.14-alpine && kubectl rollout pause deployment/myapp-deploy
+```
+
+同时监控pods，可以发现本来四个的pod，现在变成了五个，其中有一个是刚更新的原版nginx，所以实际上更新被暂停了
+
+如果在实际生产环境中，运行一段时间后，发现没问题，这时候可以停止pause，全量更新
+
+```bash
+kuberctl rollout resume deployment/myapp-deploy
+```
+
+
+
+### 2.4 版本回滚
+
+通过rollout命令进行回滚
+
+```bash
+$ kubectl rollout undo --help
+$ kubectl rollout undo deploy/myapp-deploy --to-revision=1
+$ kubectl rollout history deployment/myapp-deploy
+------------------
+REVISION  CHANGE-CAUSE
+2         <none>
+3         <none>
+4         <none>
+```
+
 
 
 ## 3. DaemonSet
