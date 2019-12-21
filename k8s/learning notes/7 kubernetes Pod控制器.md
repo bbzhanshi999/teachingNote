@@ -370,7 +370,7 @@ $ curl 10.244.1.10 //访问一个pod
 
 #### 2.2.1 修改replicas
 
-通过patch命令修改
+通过patch命令修改,patch接收json格式的补丁
 
 ```bash
 $ kubectl patch --help
@@ -457,7 +457,7 @@ $ kubectl set image deploy myapp-deploy myapp=nginx:1.14-alpine && kubectl rollo
 如果在实际生产环境中，运行一段时间后，发现没问题，这时候可以停止pause，全量更新
 
 ```bash
-kuberctl rollout resume deployment/myapp-deploy
+$ kuberctl rollout resume deployment/myapp-deploy
 ```
 
 
@@ -492,7 +492,122 @@ REVISION  CHANGE-CAUSE
 > 1. 无状态
 > 2. 必须始终持续运行在后台，不存在终止的一刻
 
+### 3.1 特殊字段
 
+与deployment的区别是不含有replicas字段，因为一个节点只能有一个
+
+- updateStrategy
+  - type:
+    - RollingUpdate
+    - OnDelete：在删除时更新
+  - rollingUpdate：
+    - maxUnavailable: 由于DaemonSet一个节点只能有一个，所以只能添加一个，不能删除一个
+
+### 3.2 例子
+
+```bash
+$ vim ds-demo.yml
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      role: logstor
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: logstor
+    spec:
+      containers:
+      - name: redis
+        image: redis:4.0-alpine
+        ports:
+        - name: redis
+          containerPort: 6379
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat-ds
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: filebeat
+      release: stable
+  template:
+    metadata:
+      labels:
+        app: filebeat
+        release: stable
+    spec:
+      containers:
+      - name: filebeat
+        image: ikubernetes/filebeat:5.6.5-alpine
+        env:
+        - name: REDIS_HOST
+          value: redis.default.svc.cluster.local
+        - name: REDIS_LOG_LEVEL
+          value: info
+```
+
+> filebeat服务的作用是收集节点中pod的日志并且发送至redis中，因此在这里，我们定义了redis pod和filebeat 的ds，并且filebeat需要通过service的dns域名去访问redis，在这里，我们通过环境变量注入的方式将域名注册至pod中去
+
+为redis 创建Service
+
+```bash
+$ kubectl expose deployment redis --port=6379
+```
+
+进入filebeat命令模式，查看dns机械redis service的ip是否正确
+
+```bash
+$ kubectl get pods -o wide
+-----------
+filebeat-ds-2wskz        1/1     Running   0          154m   10.244.1.18   node202   <none>           <none>
+filebeat-ds-z4d9n        1/1     Running   0          154m   10.244.2.21   node203   <none>           <none>
+redis-646cf89449-zgcxl   1/1     Running   0          153m   10.244.2.22   node203   <none>           <none>
+
+$ kubectl get svc -o wide
+-----------
+redis        ClusterIP   10.96.185.23   <none>        6379/TCP   153m   app=redis,role=logstor
+
+$ kubectl exec -it filebeat-ds-2wskz /bin/sh
+/ # nslookup redis
+-----------------------
+Address 1: 10.96.185.23 redis.default.svc.cluster.local
+```
+
+可见我们通过环境变量的方式向filebeat‘传送的redis  service的域名，通过容器中的nslookup命令依然能解析找出正确的clusterIp虚拟地址，这就是service的作用
+
+### 3.3 滚动更新
+
+​	与Deployment不同的是，DaemonSet设置滚动更新时，只能设置最大运行值
+
+```bash
+$ kubectl explain ds.spec.updateStrategy
+```
+
+​	通过set image来更新ds
+
+```bash
+$ kubectl set image ds filebeat-ds filebeat=ikubernetes/filebeat:5.6.6
+```
+
+默认采用rollingUpdate的方式更新
+
+### 3.4 暴露至宿主机端口
+
+DaemonSet由于一个节点一个，因此可以将其服务暴露至宿主机的命名空间，通过设置pod的```spec.hostNetwork```
 
 ## 4. Job
 
