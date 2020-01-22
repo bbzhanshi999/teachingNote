@@ -1,0 +1,15 @@
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="edu.njnu.dao.GoodDao">
+
+<select id="findList" resultType="edu.njnu.model.Good">
+        select
+          good_id as "id",
+          good_name as "goodName",
+          good_price as "goodPrice",
+          good_detail as "goodDetail",
+          repo_count as "repoCount",
+          cas_version as "casVersion"
+        from good_info
+    </select>
+</mapper>

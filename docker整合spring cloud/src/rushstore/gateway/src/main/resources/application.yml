@@ -1,0 +1,21 @@
+server:
+  port: 5555
+spring:
+  application:
+    name: gateway
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+zuul:
+  routes:
+    main-server:
+      path: /api/main/**
+      serviceId: main-server
+      strip-prefix: false #/不会删除url的前缀，以完整的请求进行转发  /api/main/login ->locahost:808/api/main/loginlogin
+    rush-server:
+      path: /api/rush/**
+      serviceId: rush-server
+      strip-prefix: false

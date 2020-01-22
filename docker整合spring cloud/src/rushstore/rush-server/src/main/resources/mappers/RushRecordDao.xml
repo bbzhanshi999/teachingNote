@@ -1,0 +1,31 @@
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="edu.njnu.dao.RushRecordDao">
+
+    <update id="updateGood">
+        update good_info set
+        repo_count = repo_count-1,
+        cas_version = cas_version+1
+        where
+        good_id = #{goodId} and repo_count>0
+    </update>
+
+    <insert id="insertRushRecord">
+        insert into rush_record (
+          user_id,
+          good_id,
+          amount,
+          status,
+          create_time
+        ) values (
+          #{userId},
+          #{goodId},
+          #{amount},
+          #{status},
+          #{createTime}
+        )
+    </insert>
+
+
+
+</mapper>
