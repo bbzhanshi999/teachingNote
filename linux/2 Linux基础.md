@@ -10,7 +10,7 @@ $ ls /
 bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
 ```
 
-![](F:\teachingNote\linux\images\linux目录结构.png)
+![](images/linux目录结构.png)
 
 >  /bin (/usr/bin /usr/local/bin )
 
@@ -149,7 +149,7 @@ $ cp /etc/kdump.conf /root
 
 vi/vim键盘映射图图
 
-![](F:\teachingNote\linux\images\vi键盘图.png)
+![](images/vi键盘图.png)
 
 ### 编辑模式
 
@@ -214,7 +214,7 @@ vi/vim键盘映射图图
 
 ### 模式间转换
 
-![](F:\teachingNote\linux\images\模式间转换.png)
+![](images/模式间转换.png)
 
 ### vim技巧篇
 
@@ -534,7 +534,7 @@ $ shutdown -r now
 
 首次进入终端，会看到如下的显示
 
-![](F:\teachingNote\linux\images\命令格式.png)
+![](images/命令格式.png)
 
 ### 1.帮助命令
 
