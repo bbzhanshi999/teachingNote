@@ -309,11 +309,11 @@ $ vi /etc/hosts
 
 ### 3.3 安装terminus
 
-如果直接在vmware中执行命令，我们会发现很不方便，我们无法将宿主机中的复制内容粘贴到虚拟机中，我们可以用过任意ssh工具进行远程访问，这样我们就可以在远程打开终端与操作系统，ssh工具很多,如ssh client、xshell等，这里我们选择简洁的terminus
+如果直接在vmware中执行命令，我们会发现很不方便，我们无法将宿主机中的复制内容粘贴到虚拟机中，我们可以用过任意ssh工具进行远程访问，这样我们就可以在远程打开终端与操作系统连接，ssh工具很多,如ssh client、xshell Putty等，这里我们选择简洁并且免费的terminus
 
 #### 安装terminus
 
-下载地址：https://autoupdate.termius.com/win/Termius.exe
+下载地址：https://autoupdate.termius.com/win/Termius.exe 或者在Microsoft store中直接安装（win10）
 
 安装过程省略
 
