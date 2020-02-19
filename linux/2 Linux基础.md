@@ -338,7 +338,9 @@ ping -c 4 10.5.5.210 >> result0
 
 使用名命令格式： **:起始行号,结束行号s/^注释符//g**（注意冒号）。
 
+#### vim配置模板
 
+参考：https://my.oschina.net/wangzilong/blog/760292
 
 ## systemctl后台服务管理
 
