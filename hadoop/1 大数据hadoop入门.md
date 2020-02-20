@@ -259,3 +259,454 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
 ​	以电商平台中常见的推荐系统为例，大致架构如下：
 
 ![](img/推荐系统架构.png)
+
+
+
+## hadoop运行环境搭建
+
+### 虚拟机配置
+
+#### centos虚拟机硬件环境
+
+> 硬盘50g，内存4g，cpu 2*2
+
+#### 虚拟机准备
+
+1. 防火墙关闭
+
+   ```bash
+   service iptables stop // 服务器关闭
+   chkconfig iptables off //关闭开机自启动
+   systemctl stop firewalld
+   systemctl disabled firewalld
+   ```
+
+2. 创建用户
+
+   ```bash
+   useradd hadoop
+   passwd hadoop
+   ```
+
+3. 在  /opt目录创建software module文件夹
+
+   ```bash
+   mkdir /opt/software /opt/module
+   chown hadoop:hadoop  /opt/software /opt/module //设置权限
+   ```
+
+4. 把这个用户添加到sudoers中
+
+   ```bash
+   vim /etc/sudoers
+   hadoop ALL=(ALL)        NOPASSWD: ALL
+   ```
+
+5. 改hosts文件
+
+   ```bash
+   vim /etc/hosts
+   //在文件后追加几个虚拟机地址
+   192.168.134.100 hadoop100
+   192.168.134.101 hadoop101
+   192.168.134.102 hadoop102
+   192.168.134.103 hadoop103
+   192.168.134.104 hadoop104
+   192.168.134.105 hadoop105
+   192.168.134.106 hadoop106
+   192.168.134.107 hadoop107
+   192.168.134.108 hadoop108
+   192.168.134.109 hadoop109
+   ```
+
+   > 也可以用shell脚本来做
+   >
+   > ```bash
+   > vim test.sh
+   > //以下为脚本内容
+   > #!/bin/bash
+   > for ((i=100;i<110;i++))
+   > 	echo "192.168.134.$i hadoop$i" >> /etc/hosts
+   > done
+   > //-------
+   > bash test.sh //运行脚本
+   > ```
+
+6. 设置ssh服务启动和自启动
+
+   ```bash
+   service sshd restart //启动
+   chkconfig sshd on // 设置开机自启动
+   ```
+
+7. 改静态ip（下面几部每克隆一台就要做一遍）
+
+   ```bash
+   vim /etc/sysconfig/network-scripts/ifcfg-eth0
+   //-----------
+   DEVICE=eth0
+   TYPE=Ethernet
+   ONBOOT=yes
+   BOOTPROTO=static
+   IPADDR=192.168.134.100
+   PREFIX=24
+   GATEWAY=192.168.134.2
+   DNS1=192.168.134.2
+   NAME=eth0
+   ```
+
+8. 改主机名
+
+   ```bash
+   vim /etc/sysconfig/network
+   HOSTNAME=hadoop100
+   
+   
+   ```
+
+
+#### 安装jdk和hadoop
+
+##### 安装jdk
+
+###### 安装openjdk
+
+```bash
+yum install java-1.8.0-openjdk* -y //安装所有openjdk的包
+```
+
+###### 安装oracle jdk
+
+1. 下载oracle jdk linux
+
+![](F:/teachingNote/hadoop/img/jdk%E4%B8%8B%E8%BD%BD.PNG)
+
+2. 通过ssh拷贝至 /opt/software
+
+```bash
+scp [文件路径]  [用户名]@[ipaddr]:[文件拷贝位置]
+//例如
+scp d:/jdk-8u201.tar.gz root@192.168.134.101:/opt/software
+```
+
+3. 解压
+
+```bash
+tar -zxvf jdk-8u201-linux-x64.tar.gz -C /opt/module
+```
+
+###### 配置环境变量
+
+```bash
+vim /etc/profile
+export JAVA_HOME=/opt/module/jdk1.8.0_144
+export PATH=$PATH:$JAVA_HOME/bin
+//------------
+source /etc/profile 
+```
+
+##### 安装hadoop
+
+1. 下载hadoop，拷贝至linux
+
+   ```bash
+   $ scp  <文件所在路径>   root@<虚拟机ip>:/<想存放的路径>java
+   ```
+
+2. 解压
+
+   ```bashj
+   tar -zxvf hadoop.tar.gz -C /opt/module
+   ```
+
+3. 配置环境变量
+
+   ```bash
+   export HADOOP_HOME=/opt/module/hadoop-2.9.2
+   export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+   //------------
+   source /etc/profile 
+   hadoop version
+   ```
+
+> 在此可以保存个快照
+
+#### hadoop目录结构
+
+查看Hadoop目录结构
+
+```bash
+$ ll
+------------------
+drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 bin
+drwxr-xr-x. 3 atguigu atguigu  4096 5月  22 2017 etc
+drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 include
+drwxr-xr-x. 3 atguigu atguigu  4096 5月  22 2017 lib
+drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 libexec
+-rw-r--r--. 1 atguigu atguigu 15429 5月  22 2017 LICENSE.txt
+-rw-r--r--. 1 atguigu atguigu   101 5月  22 2017 NOTICE.txt
+-rw-r--r--. 1 atguigu atguigu  1366 5月  22 2017 README.txt
+drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 sbin
+drwxr-xr-x. 4 atguigu atguigu  4096 5月  22 2017 share
+```
+
+##### 重要目录
+
+1. bin目录：存放对Hadoop相关服务（HDFS,YARN）进行操作的脚本
+
+2. etc目录：Hadoop的配置文件目录，存放Hadoop的配置文件
+
+3. lib目录：存放Hadoop的本地库（对数据进行压缩解压缩功能）
+
+4. sbin目录：存放启动或停止Hadoop相关服务的脚本
+
+5. share目录：存放Hadoop的依赖jar包、文档、和官方案例
+
+## Hadoop运行模式
+
+### 本地单节点运行hadoop
+
+​	本地运行模式没有调用任何hdfs和yarn的调度，只是基于本次存储环境和java运行环境的运行，实际上只能用于debug
+
+#### 官方grep案例
+
+配置 `etc/hadoop/hadoop-env.sh`
+
+```bash
+vim  etc/hadoop/hadoop-env.sh
+//---------
+export JAVA_HOME=/usr/java/latest //如果有了就不需要，配置javahome地址
+```
+
+创建输入文件夹，将例子中xml文件拷贝进入，然后执行example中的grep主函数来运算，并展示结果：
+
+```bash
+ $ mkdir input
+ $ cp etc/hadoop/*.xml input
+ $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar grep input output 'dfs[a-z.]+'
+ $ cat output/*
+```
+
+#### 官方wordcount案例
+
+1. 创建wcinput 文件夹
+
+   ```bash
+   mkdir wcinput
+   ```
+
+2. 在文件夹中建立用于统计的源文件
+
+   ```bash
+   vim wc.input
+   //---------
+   haha hehe heyhey
+   haha hoho hehe
+   haha heyhey hello
+   ```
+
+3. 调用example jar输出统计结果
+
+   ```bash
+   bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar wordcount wcinput wcoutput
+   ```
+
+
+
+
+### 伪分布式运行
+
+Pseudo-Distributed Operation伪分布式运行，指的是将所有hadoop中的节点都运行在一台主机上，比如namenode和datanode都运行在一台主机环境上，适合学习使用，简单了解。
+
+#### 启动HDFS伪分布式运行
+
+##### 配置 etc/hadoop/hadoop-env.sh
+
+```bash
+vim  etc/hadoop/hadoop-env.sh
+//---------
+export JAVA_HOME=/usr/java/latest //配置javahome地址
+```
+
+##### 配置etc/hadoop/core-site.xml:
+
+```xml
+<configuration>
+    <!--指定HDFS中NameNode的地址-->
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://hadoop101:9000</value>
+        <!--value值配置主机域名或者ip地址-->
+    </property>
+    <!--指定hadoop运行时产生文件的存储目录，比如namenode运行时产生的文件-->
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/opt/module/hadoop-2.9.2/data/tmp</value>
+        <!--value值配置主机域名或者ip地址-->
+    </property>
+</configuration>
+```
+
+##### 配置etc/hadoop/hdfs-site.xml:
+
+```xml
+<configuration>
+    <!--配置副本数量，由于我们只有一台主机，所以只配置一个副本，一台主机存多个副本没意义，挂了都没有-->
+    <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+    </property>
+</configuration>
+```
+
+###### 配置ssh连接本地
+
+由于伪分布式中，各个节点之间的通讯是基于ssh，实际上就是连接本地localhost，如果不想要通过ssh密码的方式互相连接，那么就需要进行ssh的间的密钥配置
+
+```bash
+ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+chmod 0600 ~/.ssh/authorized_keys
+```
+
+##### 格式化hdfs
+
+初始化启动hdfs之前，就要像硬盘格式化一样，对hdfs进行格式化，但是务必注意，一旦namenode启动后，就不能再进行格式化了，否则datanode将找不到自己的namenode，就好比换大哥了小弟不知道
+
+```bash
+bin/hdfs namenode -format
+```
+
+##### 启动namenode和datanode
+
+```bash
+sbin/hadoop-daemon.sh start namenode
+sbin/hadoop-daemon.sh start datanode
+```
+
+访问namenode web服务
+
+浏览器打开 hadoop101:50070
+
+![](img/伪分布式下偶偶.png)
+
+> 思考问题
+>
+> 为什么不能一直格式化NameNode，格式化NameNode，要注意什么？
+>
+> ```bash
+> $ cd data/tmp/dfs/name/current/
+> $ cat VERSION
+> ---------
+> clusterID=CID-f0330a58-36fa-4a2a-a65f-2688269b5837
+> 
+> $ cd data/tmp/dfs/data/current/
+> $ cat VERSION
+> -----
+> clusterID=CID-f0330a58-36fa-4a2a-a65f-2688269b5837
+> ```
+>
+> **注意：格式化NameNode**，会产生新的集群id,导致NameNode和DataNode的集群id不一致，集群找不到已往数据。所以，格式NameNode时，一定要先删除data数据和log日志，然后再格式化NameNode。
+
+##### 创建HDFS下的目录以供执行mapreduce
+
+```bash
+  $ bin/hdfs dfs -mkdir /user
+  $ bin/hdfs dfs -mkdir /user/<username>
+```
+
+##### 将本地input拷贝至hdfs 的input
+
+```bash
+$ bin/hdfs dfs -put input input
+```
+
+##### 运行示例代码
+
+```bash
+$ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar grep input output 'dfs[a-z.]+'
+```
+
+ 检查运行结果
+
+```bash
+$ bin/hdfs dfs -cat output/*
+```
+
+##### 关闭namenode和datanode
+
+```bash
+sbin/hadoop-daemon.sh stop namenode
+sbin/hadoop-daemon.sh stop datanode
+```
+
+#### 启动yarn并运行mapreduce程序
+
+##### 配置yarn-env.sh
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk.x86_64
+```
+
+##### 配置mapred-env.sh
+
+```bash
+export JAVA_HOME=/opt/module/jdk1.8.0_144
+```
+
+##### 配置:`etc/hadoop/mapred-site.xml`:
+
+> 此文件不存在需要复制mapred-site.xml.template获得
+
+```xml
+<configuration>
+    <!-- 指定MR运行在YARN上 -->
+    <property>
+        <name>mapreduce.framework.name</name>
+        <value>yarn</value>
+    </property>
+</configuration>
+```
+
+##### 配置etc/hadoop/yarn-site.xml
+
+```xml
+<configuration>
+    <!-- Reducer获取数据的方式 -->
+    <property>
+        <name>yarn.nodemanager.aux-services</name>
+        <value>mapreduce_shuffle</value>
+    </property>
+    <!-- 指定YARN的ResourceManager的服务主机名 -->
+    <property>
+		<name>yarn.resourcemanager.hostname</name>
+		<value>hadoop151</value>
+	</property>
+</configuration>
+```
+
+##### 启动yarn
+
+```bash
+$ sbin/start-yarn.sh
+```
+
+##### 访问ResourceManager web服务
+
+浏览器访问http://localhost:8088/
+
+##### 运行mapreduce同hdfs部分
+
+注意下面这张图，
+
+![](img/向yarn申請資源.png)
+
+可以发现，mapreduce程序向yarn的ResourceMangager申请了资源
+
+##### 停止yarn和hdfs
+
+```bash
+sbin/stop-dfs.sh
+sbin/stop-yarn.sh
+```
+
