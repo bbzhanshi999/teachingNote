@@ -344,24 +344,35 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
    ```bash
    vim /etc/sysconfig/network-scripts/ifcfg-eth0
    //-----------
-   DEVICE=eth0
    TYPE=Ethernet
-   ONBOOT=yes
+   PROXY_METHOD=none
+   BROWSER_ONLY=no
    BOOTPROTO=static
-   IPADDR=192.168.134.100
-   PREFIX=24
-   GATEWAY=192.168.134.2
-   DNS1=192.168.134.2
-   NAME=eth0
+   DEFROUTE=yes
+   IPV4_FAILURE_FATAL=no
+   IPV6INIT=yes
+   IPV6_AUTOCONF=yes
+   IPV6_DEFROUTE=yes
+   IPV6_FAILURE_FATAL=no
+   IPV6_ADDR_GEN_MODE=stable-privacy
+   NAME=ens33
+   UUID=76b19c2b-5fa7-4288-baa9-8c13cb636a30
+   DEVICE=ens33
+   ONBOOT=yes
+   IPADDR=192.168.40.151
+   GATEWAY=192.168.40.2
+   DNS1=114.114.114.114
+   DNS2=8.8.8.8
    ```
 
 8. 改主机名
 
    ```bash
    vim /etc/sysconfig/network
-   HOSTNAME=hadoop100
+   HOSTNAME=hadoop151
    
-   
+   --------
+   $ hostnamectl set-hostname hadoop151
    ```
 
 
@@ -561,7 +572,7 @@ export JAVA_HOME=/usr/java/latest //配置javahome地址
 
 ###### 配置ssh连接本地
 
-由于伪分布式中，各个节点之间的通讯是基于ssh，实际上就是连接本地localhost，如果不想要通过ssh密码的方式互相连接，那么就需要进行ssh的间的密钥配置
+由于分布式中，各个节点之间的通讯是基于ssh，实际上就是连接本地localhost，如果不想要通过ssh密码的方式互相连接，那么就需要进行ssh的间的密钥配置
 
 ```bash
 ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa
@@ -695,6 +706,8 @@ $ sbin/start-yarn.sh
 
 浏览器访问http://localhost:8088/
 
+![](img/yarn web服务.PNG)
+
 ##### 运行mapreduce同hdfs部分
 
 注意下面这张图，
@@ -709,4 +722,195 @@ $ sbin/start-yarn.sh
 sbin/stop-dfs.sh
 sbin/stop-yarn.sh
 ```
+
+### 完全分布式运行模式（重点）
+
+#### 虚拟机准备
+
+##### 快速修改ip和主机名脚本
+
+```bash
+#!/bin/bash
+
+ipaddr=$1
+hostname=$2
+if [ $ipaddr ]
+then
+  ipaddr= `echo $ipaddr | grep "^[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}$"  `
+  if [ $ipaddr ]
+  then
+    echo $ipaddr
+  else
+    echo 'no ipaddr input'
+    exit
+  fi
+else
+        echo 'no ipaddr input'
+        exit
+fi
+
+sudo sed -i '/IPADDR=/d' /etc/sysconfig/network-scripts/ifcfg-ens33
+sudo  echo "IPADDR=$ipaddr" | sudo tee  -a /etc/sysconfig/network-scripts/ifcfg-ens33
+
+sudo sed -i '/HOSTNAME=/d' /etc/sysconfig/network
+
+if [ $hostname ]
+then
+echo $hostname
+else
+hostname="hadoop${ipaddr##*.}"
+fi
+
+sudo echo "HOSTNAME=$hostname" | sudo tee  -a  /etc/sysconfig/network
+sudo hostnamectl set-hostname $hostname
+
+sudo reboot now
+```
+
+##### 脚本加入环境变量
+
+如果希望任何用户都能直接执行以上脚本，我们需要将这个脚本放入环境变量包含的bin目录中
+
+```bash
+$ sudo cp initNode.sh  /bin/
+```
+
+##### 集群快速分发脚本
+
+​	有的时候，我们需要将一些文件快速复制到集群之下每一台机器的相同目录下，那么这时候我们就需要编写一个快速分发脚本，这个脚本中，我们会用到`scp`或者`rsync`命令
+
+###### rsync 远程同步工具
+
+rsync主要用于备份和镜像。具有速度快、避免复制相同内容和支持符号链接的优点。
+
+rsync和scp区别：用rsync做文件的复制要比scp的速度快，rsync只对差异文件做更新。scp是把所有文件都复制过去。
+
+**基本语法**
+
+```bash
+$ rsync    -av       $pdir/$fname              $user@hadoop$host:$pdir/$fname
+# 命令   选项参数   要拷贝的文件路径/名称    目的用户@主机:目的路径/名称
+```
+
+ **选项参数说明**
+
+| 选项 | 功能                                                         |
+| ---- | ------------------------------------------------------------ |
+| -a   | 归档拷贝:拷贝完全一致的文件，包括文件的所属用户权限和文件的修改时间 |
+| -v   | 显示复制过程                                                 |
+
+**案例实操**
+
+（a）把hadoop151机器上的/opt/software目录同步到hadoop152服务器的root用户下的/opt/目录
+
+```bash
+[hadoop@hadoop151 opt]$ rsync -av /opt/software/ hadoop102:/opt/software
+```
+
+###### 自定义xsync命令
+
+​	为了更加快速的在集群中对文件进行分发，我们可以封装一个脚本来更加便捷的分发文件，不用像rsync那样还要输入用户名和地址
+
+```bash
+#!/bin/bash
+
+arg_num=$#
+
+if [ $arg_num == 0 ] 
+then
+   echo 'no args'
+   exit;
+fi
+
+# 获取文件或文件夹的真实路径
+meta_arg=$1
+#获取文件名
+fname=`basename $meta_arg`
+#获取文件真实路径
+dir=`cd -P $(dirname $meta_arg) && pwd`
+#获取用户名，由于集群是clone出来的，所以用户名都一样
+user=`whoami`
+
+echo $dir
+echo $fname
+
+#获取要分发的集群其他机器的ip后缀，例如152-154
+suffix_str=`echo $2 | grep "^[0-9]\{1,3\}-[0-9]\{1,3\}$"`
+if [ suffix_str ]
+then
+#false 表示什么都不做
+ false
+else
+   echo 'the ip suffix not correct'
+   exit
+fi
+
+
+#设置IFS分割符变量为-
+OLD_IFS=$IFS
+IFS='-'
+arr=($suffix_str)
+
+#设置开始ip和结束ip
+start=${arr[0]}
+end=${arr[1]}
+#还原系统分隔符
+IFS=$OLD_IFS
+#迭代将数据拷贝到每一台集群之下
+for((suffix=$start;suffix<=$end;suffix++));do
+	echo "transfer to hadoop$suffix"
+	scp -r  $dir/$fname  $user@hadoop$suffix:$dir
+done
+
+```
+
+**修改执行权限**
+
+```bash
+$ chmod +x xsync
+```
+
+**调用脚本**
+
+将xsync脚本分发给其他集群的相同位置
+
+```bash
+$ xsync xsync /opt/modules/java  152-154
+```
+
+##### 克隆三台虚拟机
+
+克隆`hadoop152`，`hadoop153`，`hadoop154`三台虚拟机
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
