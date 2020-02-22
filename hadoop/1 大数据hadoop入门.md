@@ -275,74 +275,72 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
 1. 防火墙关闭
 
    ```bash
-   service iptables stop // 服务器关闭
-   chkconfig iptables off //关闭开机自启动
-   systemctl stop firewalld
-   systemctl disabled firewalld
+   $ systemctl stop firewalld
+   $systemctl disabled firewalld
    ```
 
 2. 创建用户
 
    ```bash
-   useradd hadoop
-   passwd hadoop
+   $ useradd hadoop
+   $ passwd hadoop
    ```
 
 3. 在  /opt目录创建software module文件夹
 
    ```bash
-   mkdir /opt/software /opt/module
-   chown hadoop:hadoop  /opt/software /opt/module //设置权限
+   $ mkdir /opt/software /opt/module
+   $ chown hadoop:hadoop  /opt/software /opt/module //设置权限
    ```
 
 4. 把这个用户添加到sudoers中
 
    ```bash
-   vim /etc/sudoers
-   hadoop ALL=(ALL)        NOPASSWD: ALL
+   $ vim /etc/sudoers
+   $ hadoop ALL=(ALL)        NOPASSWD: ALL
    ```
 
 5. 改hosts文件
 
    ```bash
-   vim /etc/hosts
+   $ vim /etc/hosts
    //在文件后追加几个虚拟机地址
-   192.168.134.100 hadoop100
-   192.168.134.101 hadoop101
-   192.168.134.102 hadoop102
-   192.168.134.103 hadoop103
-   192.168.134.104 hadoop104
-   192.168.134.105 hadoop105
-   192.168.134.106 hadoop106
-   192.168.134.107 hadoop107
-   192.168.134.108 hadoop108
-   192.168.134.109 hadoop109
+   192.168.134.150 hadoop150
+   192.168.134.151 hadoop151
+   192.168.134.152 hadoop152
+   192.168.134.153 hadoop153
+   192.168.134.154 hadoop154
+   192.168.134.155 hadoop155
+   192.168.134.156 hadoop156
+   192.168.134.157 hadoop157
+   192.168.134.158 hadoop158
+   192.168.134.159 hadoop159
    ```
 
    > 也可以用shell脚本来做
    >
    > ```bash
-   > vim test.sh
-   > //以下为脚本内容
+   > $ vim test.sh
+   > -------------
    > #!/bin/bash
-   > for ((i=100;i<110;i++))
+   > for ((i=150;i<160;i++))
    > 	echo "192.168.134.$i hadoop$i" >> /etc/hosts
    > done
    > //-------
-   > bash test.sh //运行脚本
+   > $ bash test.sh //运行脚本
    > ```
 
 6. 设置ssh服务启动和自启动
 
    ```bash
-   service sshd restart //启动
-   chkconfig sshd on // 设置开机自启动
+   $ service sshd restart //启动
+   $ chkconfig sshd on // 设置开机自启动
    ```
 
 7. 改静态ip（下面几部每克隆一台就要做一遍）
 
    ```bash
-   vim /etc/sysconfig/network-scripts/ifcfg-eth0
+   vim /etc/sysconfig/network-scripts/ifcfg-ens33
    //-----------
    TYPE=Ethernet
    PROXY_METHOD=none
@@ -397,7 +395,7 @@ yum install java-1.8.0-openjdk* -y //安装所有openjdk的包
 ```bash
 scp [文件路径]  [用户名]@[ipaddr]:[文件拷贝位置]
 //例如
-scp d:/jdk-8u201.tar.gz root@192.168.134.101:/opt/software
+scp d:/jdk-8u201.tar.gz root@192.168.134.151:/opt/software
 ```
 
 3. 解压
@@ -410,7 +408,7 @@ tar -zxvf jdk-8u201-linux-x64.tar.gz -C /opt/module
 
 ```bash
 vim /etc/profile
-export JAVA_HOME=/opt/module/jdk1.8.0_144
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 export PATH=$PATH:$JAVA_HOME/bin
 //------------
 source /etc/profile 
@@ -433,7 +431,7 @@ source /etc/profile
 3. 配置环境变量
 
    ```bash
-   export HADOOP_HOME=/opt/module/hadoop-2.9.2
+   export HADOOP_HOME=/opt/module/hadoop-2.10.0
    export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
    //------------
    source /etc/profile 
@@ -449,16 +447,16 @@ source /etc/profile
 ```bash
 $ ll
 ------------------
-drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 bin
-drwxr-xr-x. 3 atguigu atguigu  4096 5月  22 2017 etc
-drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 include
-drwxr-xr-x. 3 atguigu atguigu  4096 5月  22 2017 lib
-drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 libexec
--rw-r--r--. 1 atguigu atguigu 15429 5月  22 2017 LICENSE.txt
--rw-r--r--. 1 atguigu atguigu   101 5月  22 2017 NOTICE.txt
--rw-r--r--. 1 atguigu atguigu  1366 5月  22 2017 README.txt
-drwxr-xr-x. 2 atguigu atguigu  4096 5月  22 2017 sbin
-drwxr-xr-x. 4 atguigu atguigu  4096 5月  22 2017 share
+drwxr-xr-x. 2 hadoop hadoop  4096 5月  22 2017 bin
+drwxr-xr-x. 3 hadoop hadoop  4096 5月  22 2017 etc
+drwxr-xr-x. 2 hadoop hadoop  4096 5月  22 2017 include
+drwxr-xr-x. 3 hadoop hadoop  4096 5月  22 2017 lib
+drwxr-xr-x. 2 hadoop hadoop  4096 5月  22 2017 libexec
+-rw-r--r--. 1 hadoop hadoop 15429 5月  22 2017 LICENSE.txt
+-rw-r--r--. 1 hadoop hadoop   101 5月  22 2017 NOTICE.txt
+-rw-r--r--. 1 hadoop hadoop  1366 5月  22 2017 README.txt
+drwxr-xr-x. 2 hadoop hadoop  4096 5月  22 2017 sbin
+drwxr-xr-x. 4 hadoop hadoop  4096 5月  22 2017 share
 ```
 
 ##### 重要目录
@@ -486,7 +484,7 @@ drwxr-xr-x. 4 atguigu atguigu  4096 5月  22 2017 share
 ```bash
 vim  etc/hadoop/hadoop-env.sh
 //---------
-export JAVA_HOME=/usr/java/latest //如果有了就不需要，配置javahome地址
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 ```
 
 创建输入文件夹，将例子中xml文件拷贝进入，然后执行example中的grep主函数来运算，并展示结果：
@@ -494,7 +492,7 @@ export JAVA_HOME=/usr/java/latest //如果有了就不需要，配置javahome地
 ```bash
  $ mkdir input
  $ cp etc/hadoop/*.xml input
- $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar grep input output 'dfs[a-z.]+'
+ $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar grep input output 'dfs[a-z.]+'
  $ cat output/*
 ```
 
@@ -503,13 +501,13 @@ export JAVA_HOME=/usr/java/latest //如果有了就不需要，配置javahome地
 1. 创建wcinput 文件夹
 
    ```bash
-   mkdir wcinput
+   $ mkdir wcinput
    ```
 
 2. 在文件夹中建立用于统计的源文件
 
    ```bash
-   vim wc.input
+   $ vim wc.input
    //---------
    haha hehe heyhey
    haha hoho hehe
@@ -519,7 +517,7 @@ export JAVA_HOME=/usr/java/latest //如果有了就不需要，配置javahome地
 3. 调用example jar输出统计结果
 
    ```bash
-   bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar wordcount wcinput wcoutput
+   $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar wordcount wcinput wcoutput
    ```
 
 
@@ -527,7 +525,7 @@ export JAVA_HOME=/usr/java/latest //如果有了就不需要，配置javahome地
 
 ### 伪分布式运行
 
-Pseudo-Distributed Operation伪分布式运行，指的是将所有hadoop中的节点都运行在一台主机上，比如namenode和datanode都运行在一台主机环境上，适合学习使用，简单了解。
+`Pseudo-Distributed Operation`伪分布式运行，指的是将所有hadoop中的节点都运行在一台主机上，比如namenode和datanode都运行在一台主机环境上，适合学习使用，简单了解。
 
 #### 启动HDFS伪分布式运行
 
@@ -536,7 +534,8 @@ Pseudo-Distributed Operation伪分布式运行，指的是将所有hadoop中的�
 ```bash
 vim  etc/hadoop/hadoop-env.sh
 //---------
-export JAVA_HOME=/usr/java/latest //配置javahome地址
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64 
+# 配置javahome地址
 ```
 
 ##### 配置etc/hadoop/core-site.xml:
@@ -546,13 +545,13 @@ export JAVA_HOME=/usr/java/latest //配置javahome地址
     <!--指定HDFS中NameNode的地址-->
     <property>
         <name>fs.defaultFS</name>
-        <value>hdfs://hadoop101:9000</value>
+        <value>hdfs://hadoop151:9000</value>
         <!--value值配置主机域名或者ip地址-->
     </property>
     <!--指定hadoop运行时产生文件的存储目录，比如namenode运行时产生的文件-->
     <property>
         <name>hadoop.tmp.dir</name>
-        <value>/opt/module/hadoop-2.9.2/data/tmp</value>
+        <value>/opt/module/hadoop-2.10.0/data/tmp</value>
         <!--value值配置主机域名或者ip地址-->
     </property>
 </configuration>
@@ -597,7 +596,7 @@ sbin/hadoop-daemon.sh start datanode
 
 访问namenode web服务
 
-浏览器打开 hadoop101:50070
+浏览器打开 hadoop151:50070
 
 ![](img/伪分布式下偶偶.png)
 
@@ -617,7 +616,7 @@ sbin/hadoop-daemon.sh start datanode
 > clusterID=CID-f0330a58-36fa-4a2a-a65f-2688269b5837
 > ```
 >
-> **注意：格式化NameNode**，会产生新的集群id,导致NameNode和DataNode的集群id不一致，集群找不到已往数据。所以，格式NameNode时，一定要先删除data数据和log日志，然后再格式化NameNode。
+> **注意：格式化NameNode**，会产生新的集的集群id不一致，集群找不到已往数据。所以，格式NameNode时，一定要先删除data数据和log日志，然后再格式化NameNode。
 
 ##### 创建HDFS下的目录以供执行mapreduce
 
@@ -635,7 +634,7 @@ $ bin/hdfs dfs -put input input
 ##### 运行示例代码
 
 ```bash
-$ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar grep input output 'dfs[a-z.]+'
+$ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar grep input output 'dfs[a-z.]+'
 ```
 
  检查运行结果
@@ -662,7 +661,7 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk.x86_64
 ##### 配置mapred-env.sh
 
 ```bash
-export JAVA_HOME=/opt/module/jdk1.8.0_144
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 ```
 
 ##### 配置:`etc/hadoop/mapred-site.xml`:
@@ -704,7 +703,7 @@ $ sbin/start-yarn.sh
 
 ##### 访问ResourceManager web服务
 
-浏览器访问http://localhost:8088/
+浏览器访问http://hadoop151:8088/
 
 ![](img/yarn web服务.PNG)
 
@@ -728,6 +727,10 @@ sbin/stop-yarn.sh
 #### 虚拟机准备
 
 ##### 快速修改ip和主机名脚本
+
+```bash
+$ vim cip.sh
+```
 
 ```bash
 #!/bin/bash
@@ -767,12 +770,12 @@ sudo hostnamectl set-hostname $hostname
 sudo reboot now
 ```
 
-##### 脚本加入环境变量
+###### 脚本加入环境变量
 
 如果希望任何用户都能直接执行以上脚本，我们需要将这个脚本放入环境变量包含的bin目录中
 
 ```bash
-$ sudo cp initNode.sh  /bin/
+$ sudo cp cip.sh  /bin/
 ```
 
 ##### 集群快速分发脚本
@@ -785,11 +788,17 @@ rsync主要用于备份和镜像。具有速度快、避免复制相同内容和
 
 rsync和scp区别：用rsync做文件的复制要比scp的速度快，rsync只对差异文件做更新。scp是把所有文件都复制过去。
 
+**安装`rsync`**
+
+```bash
+$ sudo yum install -y rsync
+```
+
 **基本语法**
 
 ```bash
 $ rsync    -av       $pdir/$fname              $user@hadoop$host:$pdir/$fname
-# 命令   选项参数   要拷贝的文件路径/名称    目的用户@主机:目的路径/名称
+# 命令   选项参数      要拷贝的文件路径/名称         目的用户@主机:目的路径/名称
 ```
 
  **选项参数说明**
@@ -804,12 +813,16 @@ $ rsync    -av       $pdir/$fname              $user@hadoop$host:$pdir/$fname
 （a）把hadoop151机器上的/opt/software目录同步到hadoop152服务器的root用户下的/opt/目录
 
 ```bash
-[hadoop@hadoop151 opt]$ rsync -av /opt/software/ hadoop102:/opt/software
+[hadoop@hadoop151 opt]$ rsync -av /opt/software/ hadoop152:/opt/software
 ```
 
 ###### 自定义xsync命令
 
 ​	为了更加快速的在集群中对文件进行分发，我们可以封装一个脚本来更加便捷的分发文件，不用像rsync那样还要输入用户名和地址
+
+```bash
+$ vim xsync
+```
 
 ```bash
 #!/bin/bash
@@ -836,7 +849,7 @@ echo $fname
 
 #获取要分发的集群其他机器的ip后缀，例如152-154
 suffix_str=`echo $2 | grep "^[0-9]\{1,3\}-[0-9]\{1,3\}$"`
-if [ suffix_str ]
+if [ $suffix_str ]
 then
 #false 表示什么都不做
  false
@@ -859,7 +872,8 @@ IFS=$OLD_IFS
 #迭代将数据拷贝到每一台集群之下
 for((suffix=$start;suffix<=$end;suffix++));do
 	echo "transfer to hadoop$suffix"
-	scp -r  $dir/$fname  $user@hadoop$suffix:$dir
+#   scp -r  $dir/$fname  $user@hadoop$suffix:$dir
+	rsync -av $dir/$fname $user@hadoop$suffix:$dir
 done
 
 ```
@@ -878,39 +892,668 @@ $ chmod +x xsync
 $ xsync xsync /opt/modules/java  152-154
 ```
 
+将脚本加入`/bin`目录
+
+```bash
+$ sudo cp xsync /bin
+```
+
 ##### 克隆三台虚拟机
 
 克隆`hadoop152`，`hadoop153`，`hadoop154`三台虚拟机
 
+###### 通过cip脚本修改ip
+
+在三台机器上运行cip脚本
+
+```bash
+[hadoop@hadoop152 ~]$ cip.sh 192.168.40.152
+[hadoop@hadoop153 ~]$ cip.sh 192.168.40.153
+[hadoop@hadoop154 ~]$ cip.sh 192.168.40.154
+```
+
+###### terminus创建ssh连接
+
+#### 集群配置
+
+​	一个完整的hadoop集群最少需要有六台主机分别运行：`NameNode`,3个`DataNode`,`SecondaryNameNode`,`ResourceManager`,3个`NodeManager`，但是由于条件不允许，我们会将部分节点合并，
+
+|      | hadoop152          | hadoop153                    | hadoop154                   |
+| ---- | ------------------ | ---------------------------- | --------------------------- |
+| HDFS | NameNode，DataNode | DataNode                     | SecondaryNameNode，DataNode |
+| YARN | NodeManager        | ResourceManager，NodeManager | NodeManager                 |
+
+##### 集群配置文件
+
+我们需要对如下文件进行修改
+
+![](img/集群配置文件.png)
+
+##### 1. 核心配置文件
+
+```core-site.xml```：配置`namenode`的地址和运行时文件存储位置
+
+```xml
+<!-- 指定HDFS中NameNode的地址 -->
+<property>
+		<name>fs.defaultFS</name>
+      <value>hdfs://hadoop152:9000</value>
+</property>
+
+<!-- 指定Hadoop运行时产生文件的存储目录 -->
+<property>
+		<name>hadoop.tmp.dir</name>
+		<value>/opt/module/hadoop-2.10.0/data/tmp</value>
+</property>
+```
+
+##### 2.hdfs配置文件
+
+```hadoop-env.sh```：配置hdfs所需java运行环境
+
+```shell
+$ vim hadoop-env.sh
+----------
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
+```
+
+```hdfs-site.xml```: 配置`datanode`数量和`SecondaryNameNode`位置
+
+```xml
+<property>
+		<name>dfs.replication</name>
+		<value>3</value>
+</property>
+
+<!-- 指定Hadoop辅助名称节点主机配置 -->
+<property>
+      <name>dfs.namenode.secondary.http-address</name>
+      <value>hadoop154:50090</value>
+</property>
+```
+
+##### 3.yarn配置文件
+
+`yarn-env.sh`: 配置yarn运行所依赖java运行环境
+
+```bash
+$ vi yarn-env.sh
+-------------
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
+```
+
+```yarn-site.xml```:配置mapreduce获取数据方式和ResourceManager地址
+
+```xml
+<!-- Reducer获取数据的方式 -->
+<property>
+		<name>yarn.nodemanager.aux-services</name>
+		<value>mapreduce_shuffle</value>
+</property>
+
+<!-- 指定YARN的ResourceManager的地址 -->
+<property>
+		<name>yarn.resourcemanager.hostname</name>
+		<value>hadoop153</value>
+</property>
+```
+
+##### 4.MapReduce配置文件
+
+`mapred-env.sh`:配置mapreduce运行依赖的java环境
+
+```bash
+$ vi mapred-env.sh
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
+```
+
+`mapred-site.xml`:配置mapreduce运行资源需要交由yarn分配
+
+```xml
+<!-- 指定MR运行在Yarn上 -->
+<property>
+		<name>mapreduce.framework.name</name>
+		<value>yarn</value>
+</property>
+```
+
+##### 分发配置文件至集群
+
+```bash
+$ xsync /opt/module/hadoop-2.10.0/etc/
+```
+
+#### 手动启动集群
+
+​	以上的集群配置中，我们并没有指定`datanode`和`nodemanager`的位置，我们只是设置了`NameNode`,`SecondaryNameNode`,`ResourceManager`的位置，以及集群副本的数量为3，因此我们需要手动启动`datanode`
+
+##### 1.格式化`namenode`
+
+如果集群是第一次启动，需要格式化`NameNode`
+
+```bash
+$ hdfs namenode -format
+```
+
+##### 2.启动`namenode`
+
+在`hadoop152上`启动`NameNode`
+
+```bash
+$ hadoop-daemon.sh start namenode
+$ jps
+3461 NameNode
+```
+
+##### 3. 启动`DataNode`
+
+在`hadoop152`、`hadoop153`以及`hadoop154`上分别启动`DataNode`
+
+```bash
+[hadoop@hadoop152 hadoop-2.10.0]$ hadoop-daemon.sh start datanode
+[hadoop@hadoop152 hadoop-2.10.0]$ jps
+3461 NameNode
+3608 Jps
+3561 DataNode
+-------------------
+[hadoop@hadoop153 hadoop-2.10.0]$ hadoop-daemon.sh start datanode
+[hadoop@hadoop153 hadoop-2.10.0]$ jps
+3190 DataNode
+3279 Jps
+-------------
+[hadoop@hadoop154 hadoop-2.10.0]$ hadoop-daemon.sh start datanode
+[hadoop@hadoop154 hadoop-2.10.0]$ jps
+3237 Jps
+3163 DataNode
+-------------------
+[hadoop@hadoop154 hadoop-2.10.0]$ hadoop-daemon.sh start secondarynamenode
+```
+
+##### 4.访问`http://hadoop152:50070`
+
+![](img/完全分布式部署hdfs效果.png)
+
+> 思考：每次都一个一个节点启动，如果节点数增加到1000个怎么办？
+>
+> 早上来了开始一个一个节点启动，到晚上下班刚好完成，下班？
+
+​	
+
+#### 使用hadoop集群脚本
+
+​	以上手动方式启动集群的方式并不适合真实的生产环境，通过脚本自动化部署集群更符合生产要求，这一点，hadoop为我们提供了集群脚本。
+
+##### ssh配置免密登录
+
+​	要想使用hadoop集群脚本，name节点与节点之间进访问时，基于ssh协议是需要输入远程访问账号密码的，这在集群中显然不适合，因此我们要配置免密登录，让节点与节点可以直接进行访问。
+
+​	ssh的免密登录实际上是利用ssl协议并且配合rsa非对称加密算法实现的，因此我们需要创建一对公钥和私钥。
+
+> 参考：https://www.bilibili.com/video/av57769439
+>
+> 非对称算法基本原理解释：
+>
+> ```bash
+> 假定我们有A和B两台服务器：
+> A要通过非对称加密将数据发送给B
+> A有两把钥匙：公钥Pa和私钥Sa，公钥可以解密私钥加密过的数据，同样，私钥可以解密公钥加密过的数据
+> Pa(data)-> Sa(Pa(data))   Sa(data) -> Pa(Sa(data))
+> 数据为data
+> 
+> 1.A将自己的公钥Pa传送给B    
+> 2.A将data用私钥Sa加密传送给B
+> 3.B将数据用A的公钥Pa对数据data进行解密
+> 
+> ```
+>
+> 非对称的好处显而易见，只有公钥不能对数据进行解密
+
+###### ssh密码登录流程
+
+​	假设服务器A 要远程访问服务器B
+
+1. A 向B发送登录请求（此时没带密码，密码是要加密的）
+
+2. B接受到请求后发送一个秘钥给A
+
+3. A第一次拿到秘钥后，要人工确认下B的身份(让你输入yes或no)
+
+   ```bash
+   The authenticity of host 'hadoop154 (192.168.40.154)' can't be established.
+   ECDSA key fingerprint is SHA256:xGZgy9HQnLbcRbqS76hZfjfQq2jumcPnjXI7CSBV+1k.
+   ECDSA key fingerprint is MD5:45:fe:20:cc:4a:cf:44:29:5e:30:80:66:a2:ef:87:19.
+   Are you sure you want to continue connecting (yes/no)? 
+   ```
+
+4. 输入yes后，A就会将B发送的秘钥保存在~/.ssh的known_hosts里
+
+5. A这时候将密码用B给的秘钥加密后发送给B
+
+我们可以访问A服务器下的~/.ssh/known_hosts文件，这里就保存了B发送回来的秘钥,例如我们访问hadoop152
+
+```bash
+$ vim ~/.ssh/known_hosts
+-----------------------
+hadoop154,192.168.40.154 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAvB+B4ckb3ExOkduWIuoGB2oG9RJE4UALIjEKuAXpRZ0WQoONndcGKu0pJWou/DMvrZWwz/UiiBNamd4LwjDTI=
+#这就是hadoop154发给152的公钥
+```
+
+###### ssh免密登录流程
+
+​	还是假设服务器A 要远程访问服务器B
+
+1. A生成自己的公钥和私钥
+2. A将公钥发送给B
+3. A通过私钥加密发送访问B的请求
+4. B能够通过A的公钥解密
+5. 建立ssh通信
+
+![](img/免密登录流程.png)
+
+当B收到A发过来的公钥时，我们就可以在B的`~/.ssh/authrized_keys`中看到A发送的公钥
+
+###### ssh免密登录配置完全步骤
+
+1. 在```hadoop152```上生成公钥和私钥
+
+   ```bash
+   $ ssh-keygen -t rsa
+   #连按三次回车
+   ```
+
+   此时在`~/.ssh/`目录下产生id_rsa（私钥）、id_rsa.pub（公钥）两个文件
+
+2. 将公钥拷贝到目标机器上（**本机也要拷贝**，因为本机namenode也会通过ssh免密访问本机datanode）
+
+   ```bash
+   [hadoop@hadoop152 .ssh]$ ssh-copy-id hadoop152
+   [hadoop@hadoop153 .ssh]$ ssh-copy-id hadoop153
+   [hadoop@hadoop154 .ssh]$ ssh-copy-id hadoop154
+   ```
+
+   此时，在三台主机的`~/.ssh/authorized_keys`中就会保存了`hadoop152`的公钥
+
+   ```bash
+   # 152的公钥
+   ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDHUb6fPgtqqqf+cRxb2zGBZA/lXBrjiNkBoh/L/jFmdOzMl7ezFEjkULQBUDD9tZgvNEl8L3exLM0SYsrpP88G3eD0pwtsMSWIzbbg9/6CeP0p3JnWxH2jHmlsOzvc0XbP5wBVqx9/6VAap9G+cEeCs4CCNvhBEzq/YqBgFKFATggahuU7bGgCMK9ON90c2AgqyFs8ZntjGmy7cBhrFoA3+yJiMAuYlhca/WE1aVtvnKyq1gFrZdPiLlCHBCw2JECGFlaSmdjEkw3W3tuYQOuWzCMFXS8h3V4idWuik1chRGigNw1iEV0tdz/OskY/3vB8tKmTd8Iz0u2dzyX/rgf hadoop@hadoop152
+   ~                                                                                                         
+   ```
+
+3. 在`hadoop152`上登录用ssh命令登录测试
+
+   ```bash
+   $ ssh hadoop@192.168.40.152
+   ----------------
+   Last login: Sun Feb 23 00:58:21 2020 from hadoop153
+   ```
+
+**注意**：
+
+​	目前我们只是配置了`hadoop152`访问其他节点的免密登录，而且只能用hadoop账号来操作，我们知道`hadoop153`中有`ResourceManager`，`hadoop154`中有`SecondaryNameNode`。因此`hadoop153`和`hadoop154`同样生成秘钥，并将公钥发送给三台主机
+
+​	此外，**如果想要实现root账号访问其他节点**，那么之前生成的公钥和私钥是无用的，因为他们存在hadoop用户目录下的`.ssh`目录下，因此，我们还要用root登录主机再次生成秘钥，并发送给其他目标主机。
+
+##### ssh免密简化配置（只适合学习或局域网内部）
+
+1. 在`hadoop152`节点生成公钥私钥
+
+   ```bash
+   $ ssh-keygen -t rsa
+   #连按三次回车
+   ```
+
+2. 将公钥拷贝给本机
+
+   ```bash
+   [hadoop@hadoop152 .ssh]$ ssh-copy-id hadoop152
+   ```
+
+3. 同步整个`~/.ssh`文件夹至集群
+
+   ```bash
+   $ sudo xsync ~/.ssh/ 153-154
+   ```
+
+> **注意**： 这种方式显然有很大的安全风险，首先三台机器用的公钥和私钥其实是一样的，再次，拷贝ssh目录时，我们其实有可能被黑客拦截请求获取私钥
+
+###### ~/.ssh文件夹文件解释
+
+表2-4
+
+| known_hosts     | 记录ssh访问过计算机的公钥(public key) |
+| --------------- | ------------------------------------- |
+| id_rsa          | 生成的私钥                            |
+| id_rsa.pub      | 生成的公钥                            |
+| authorized_keys | 存放授权过得无密登录服务器公钥        |
+
+##### 运行群起脚本
+
+###### 1.配置slaves从节点
+
+​	之前手动启动集群时，我们并没有配置`DataNode`和`NodeManager`,这几个服务需要有从节点来运行，而我们的主节点也是从节点
+
+```bash
+# /opt/module/hadoop-2.10.0/etc/hadoop/slaves
+[hadoop@hadoop152 hadoop]$ vim slaves
+----------------------
+#删除localhost，添加
+hadoop152
+hadoop153
+hadoop154
+```
+
+> **注意**：该文件中添加的内容结尾不允许有空格，文件中不允许有空行。
+
+同步所有节点
+
+```bash
+$ xsync slaves 153-154
+```
+
+###### 2. 启动集群
+
+1. 如果集群是第一次启动，需要格式化`NameNode`（注意格式化之前，一定要先停止上次启动的所有`namenode`和`datanode`进程，然后再删除`data`和`log`数据）
+
+   ```bash
+   $ hdfs namenode -format
+   ```
+
+2. 启动hdfs
+
+   在`hadoop152`下启动hdfs
+
+   ```bash
+   [hadoop@hadoop152 hadoop-2.10.0]$ sbin/start-dfs.sh
+   [hadoop@hadoop152 hadoop-2.10.0]$ jps
+   4166 NameNode
+   4482 Jps
+   4263 DataNode
+   
+   [hadoop@hadoop153 hadoop-2.10.0]$ jps
+   3218 DataNode
+   3288 Jps
+   
+   [hadoop@hadoop154 hadoop-2.10.0]$ jps
+   3221 DataNode
+   3283 SecondaryNameNode
+   3364 Jps
+   ```
+
+3. 启动yarn
+
+   **注意**：启动yarn的命令一定要在配置了`ResourceManager`的机器上执行
+
+   ```bash
+   [hadoop@hadoop153 hadoop-2.10.0]$ sbin/start-yarn.sh
+   ```
+
+4. web端查看hdfs和yarn
+
+   分别访问 http://hadoop152:50070   ,   http://hadoop154:50090  ， http://hadoop153:8088 查看HDFS和YARN的信息
+
+   ![](img/检查NameNode.png)
+
+   ![](img/检查yarn.png)
+
+   ![](img/snn检查.png)
 
 
 
+##### mapreduce测试
 
+1. 创建wcinput 文件夹
 
+   ```bash
+   $ mkdir wcinput
+   ```
 
+2. 在文件夹中建立用于统计的源文件
 
+   ```bash
+   $ vim wc.input
+   //---------
+   haha hehe heyhey
+   haha hoho hehe
+   haha heyhey hello
+   ```
 
+3. 将文件拷贝至hdfs
 
+   ```bash
+   bin/hdfs dfs -put wcinput /wcinput
+   ```
 
+4. 调用example jar输出统计结果
 
+   ```bash
+   $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar wordcount /wcinput /wcoutput
+   ```
 
+5. 检查结果
 
+   ```bash
+   $ hdfs dfs -cat /wcoutput/*
+   -------------------
+   haha    3
+   hehe    2
+   hello   1
+   heyhey  2
+   hoho    1
+   ```
 
+   访问yarn web服务，可以看到应用已经执行完毕
 
+   ![](img/检查yarn中的应用运行情况.png)
 
+#### 配置历史服务器和日志聚集
 
+​	在实际生产环境中，上千个节点的集群当中，如果服务出现了异常，我们要有能力快速定位错误位置，那么历史信息和日志就必须能够快速获取，所以，我们必须要给hadoop集群配置历史服务和日志聚集功能。
 
+##### 1.配置历史服务器
 
+1. 关闭集群节点
 
+   ```bash
+   [hadoop@hadoop152 module]$ stop-dfs.sh
+   [hadoop@hadoop153 module]$ stop-yarn.sh
+   ```
 
+2. 配置`mapred-site.xml`
 
+   ```xml
+   <!-- 历史服务器端地址 -->
+   <property>
+   <name>mapreduce.jobhistory.address</name>
+   <value>hadoop154:10020</value>
+   <!--历史服务器尽量选择负载可能较小的节点部署-->
+   </property>
+   <!-- 历史服务器web端地址 -->
+   <property>
+       <name>mapreduce.jobhistory.webapp.address</name>
+       <value>hadoop154:19888</value>
+   </property>
+   ```
 
+3. 同步配置文件
 
+   ```bash
+   $ xsync mapred-site.xml 153-154
+   ```
 
+4. 启动历史服务器
 
+   ```bash
+   [hadoop@hadoop154 hadoop-2.10.0]$ sbin/mr-jobhistory-daemon.sh start historyserver
+   ```
 
+##### 2.配置日志聚集
 
+​	日志聚集的作用是讲各个节点的运行日志统一上传到hdfs上，并且提供web接口，供统一查询
 
+> **注意**：开启日志聚集功能，需要重新启动`NodeManager` 、`ResourceManager`和`HistoryManager`。
 
+1. 关闭集群
 
+   ```bash
+   [hadoop@hadoop152 module]$ stop-dfs.sh
+   [hadoop@hadoop153 module]$ stop-yarn.sh
+   ```
+
+2. 配置`yarn-site.xml`
+
+   ```xml
+   <!-- 日志聚集功能使能 -->
+   <property>
+   <name>yarn.log-aggregation-enable</name>
+   <value>true</value>
+   </property>
+   
+   <!-- 日志保留时间设置7天 -->
+   <property>
+   <name>yarn.log-aggregation.retain-seconds</name>
+   <value>604800</value>
+   </property>
+   ```
+
+3. 同步配置文件
+
+   ```bash
+   $ xsync yarn-site.xml 153-154
+   ```
+
+##### 3.启动集群测试
+
+重启集群，重新执行mapreduce，打开yarn web服务，访问`applications` 页面，点击history查看历史信息
+
+![](img/history.png)
+
+![](img/history2.png)
+
+接着点击 logs查看日志
+
+![](img/日志聚集.png)
+
+### 时间日期同步
+
+​	在集群架构当中，保证每台节点的日期同步是基本都要做的工作，例如在Hbase集群下，时间同步的准确性是秒级的，虽然hadoop集群的时间同步要求没那个高，但是这里我们还是配置下时间同步
+
+#### 时间同步原理
+
+![](img/时间同步的原理.png)
+
+1. 将hadoop152配置为时间服务器
+2. hadoop153和hadoop154定时访问hadoop152获取时间进行同步
+
+#### 配置时间同步步骤
+
+##### 1.时间服务器配置（必须root用户）
+
+（1）检查ntp是否安装
+
+```bash
+[root@hadoop152 桌面]# rpm -qa|grep ntp
+ntp-4.2.6p5-10.el6.centos.x86_64
+fontpackages-filesystem-1.41-1.1.el6.noarch
+ntpdate-4.2.6p5-10.el6.centos.x86_64
+```
+
+> centos minimal版本是没有ntp服务的，需要手动安装
+>
+> ```bash
+> $ sudo yum install -y ntp ntpdate
+> ```
+
+查看服务状态，如果服务启动，请关闭服务
+
+```bash
+$ systemctl status ntpd
+-------------
+$ systemctl stop ntpd
+```
+
+（2）修改ntp配置文件
+
+```bash
+$ vi /etc/ntp.conf
+```
+
+修改内容如下
+
+a）修改1（授权192.168.1.0-192.168.1.255网段上的所有机器可以从这台机器上查询和同步时间）
+
+```bash
+#restrict 192.168.1.0 mask 255.255.255.0 nomodify notrap为
+
+restrict 192.168.1.0 mask 255.255.255.0 nomodify notrap
+```
+
+b）修改2（集群在局域网中，不使用其他互联网上的时间）
+
+```bash
+#注释默认的外网ntpd服务
+#server 0.centos.pool.ntp.org iburst
+#server 1.centos.pool.ntp.org iburst
+#server 2.centos.pool.ntp.org iburst
+#server 3.centos.pool.ntp.org iburst
+```
+
+c）添加3（当该节点丢失网络连接，依然可以采用本地时间作为时间服务器为集群中的其他节点提供时间同步）
+
+```bash
+server 127.127.1.0
+fudge 127.127.1.0 stratum 10
+```
+
+（3）修改/etc/sysconfig/ntpd 文件
+
+```bash
+$ vim /etc/sysconfig/ntpd
+```
+
+增加内容如下（让硬件时间与系统时间一起同步）
+
+```bash
+SYNC_HWCLOCK=yes
+```
+
+（4）重新启动ntpd服务
+
+```bash
+$ systemctl status ntpd
+$ systemctl start ntpd
+```
+
+（5）设置ntpd服务开机启动
+
+```bash
+$ systemctl enable ntpd
+```
+
+##### 2.其他机器配置（必须root用户）
+
+（1）在其他机器配置10分钟与时间服务器同步一次
+
+```bash
+crontab -e
+```
+
+编写定时任务如下：
+
+```bash
+*/10 * * * * /usr/sbin/ntpdate hadoop152
+```
+
+（2）修改任意机器时间
+
+```bash
+$ date -s "2017-9-11 11:11:11"
+```
+
+（3）十分钟后查看机器是否与时间服务器同步
+
+```bash
+$ date
+```
+
+> 说明：测试的时候可以将10分钟调整为1分钟，节省时间。
 
