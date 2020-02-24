@@ -31,11 +31,11 @@ HDFS局限：
 
    - 数据自动保存多个副本，它通过增加副本的形式，提高容错性
 
-     ![](img/\副本1.png)
+     ![](img/副本1.png)
 
    - 某一个副本丢失以后，可以自动回复
 
-     ![](img/\副本2.png)
+     ![](img/副本2.png)
 
 2. 适合处理大数据
 
@@ -62,9 +62,9 @@ HDFS局限：
 >
 >https://blog.csdn.net/xiangxizhishi/article/details/76100513
 
-![](img/\hdfs架构1.png)
+![](img/hdfs架构1.png)
 
-![](img/\hdfs架构2.png)
+![](img/hdfs架构2.png)
 
 **Client：**就是客户端。
 
@@ -109,7 +109,7 @@ HDFS局限：
    >
    > 合并流程图：
    >
-   > ![](img/\fsimage和fsedits合并流程.png)
+   > ![](img/fsimage和fsedits合并流程.png)
 
 3. 在紧急情况下，可辅助恢复 NameNode。
 
@@ -123,7 +123,7 @@ HDFS局限：
 
 假设我们的文件寻址时间为10ms，那么文件的传输时间一般为寻址时间的100倍，也就是1s，而机械硬盘的传输速率大概是100Mb/s，那么正好可以在1s时间读取100m左右的数据，所以hadoop将数据块的大小设置为128M，这样可以让寻址传输时间比达到最佳。（当然、硬件技术早已经突破了10MB/s的速度）
 
-![](img/\文件块的小.png)
+![](img/文件块的小.png)
 
 > 思考：为什么亏得大小不能设置太小，也不能设置太大？
 >
@@ -388,7 +388,7 @@ hdfs://hadoop152:9000  51.0 G  2.9 M     38.5 G    0%
 $ hdfs dfs -setrep 10 /sanguo/shuguo/kongming.txt
 ```
 
-![](img/\修改副本数量.png)
+![](img/修改副本数量.png)
 
 >  注意：这里设置的副本数只是记录在NameNode的元数据中，是否真的会有这么多副本，还得看DataNode的数量。因为目前只有3台设备，最多也就3个副本，只有节点数的增加到10台时，副本数才能达到10。
 >
@@ -410,7 +410,7 @@ $ hdfs dfs -setrep 10 /sanguo/shuguo/kongming.txt
 
 2.配置hadoop环境变量
 
-![](F:\teachingNote\hadoop\img\windows配置环境变量.png)
+![](img/windows配置环境变量.png)
 
 3.下载hadoop在windows上运行的必要工具winUtils
 
@@ -418,11 +418,11 @@ $ hdfs dfs -setrep 10 /sanguo/shuguo/kongming.txt
 >
 > 请根据hadoop不同版本下载对应的winutils和hadoop.dll
 
-![](F:\teachingNote\hadoop\img\winutils下载地址.png)
+![](img/winutils下载地址.png)
 
 4.将winutils和hadoop.dll放入bin目录
 
-![](F:\teachingNote\hadoop\img\winutils位置.png)
+![](img/winutils位置.png)
 
 5.检查配置是否成功
 
@@ -578,7 +578,7 @@ public class HdfsClient {
 
 运行结果
 
-![](F:\teachingNote\hadoop\img\mkdir运行结果.png)
+![](img/mkdir运行结果.png)
 
 #### Api重要对象
 
@@ -781,7 +781,7 @@ fs.close();
 
 ### HDFS写数据流程
 
-![](F:\teachingNote\hadoop\img\hdfs的写数据流过程.png)
+![](img/hdfs的写数据流过程.png)
 
 1. 客户端通过`Distributed FileSystem`模块向`NameNode`请求上传文件，`NameNode`检查目标文件是否已存在，父目录是否存在。
 
@@ -805,7 +805,7 @@ fs.close();
 
 **节点距离：两个节点到达最近的共同祖先的距离总和。**
 
-![](F:\teachingNote\hadoop\img\网络拓扑图例.png)
+![](img/网络拓扑图例.png)
 
 ​	例如，假设有数据中心d1机架r1中的节点n1。该节点可以表示为/d1/r1/n1。利用这种标记，这里给出四种距离描述，如图所示。
 
@@ -834,7 +834,7 @@ fs.close();
 
 ### HDFS读数据流程
 
-![](F:\teachingNote\hadoop\img\hdfs输数据流程.png)
+![](img/hdfs输数据流程.png)
 
 1. 客户端通过Distributed FileSystem向NameNode请求下载文件，NameNode通过查询元数据，找到文件块所在的DataNode地址。
 
