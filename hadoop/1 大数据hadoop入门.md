@@ -431,7 +431,7 @@ source /etc/profile
 3. 配置环境变量
 
    ```bash
-   export HADOOP_HOME=/opt/module/hadoop-2.10.0
+   export HADOOP_HOME=/opt/module/hadoop-3.2.1
    export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
    //------------
    source /etc/profile 
@@ -492,7 +492,7 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 ```bash
  $ mkdir input
  $ cp etc/hadoop/*.xml input
- $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar grep input output 'dfs[a-z.]+'
+ $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar grep input output 'dfs[a-z.]+'
  $ cat output/*
 ```
 
@@ -509,15 +509,13 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
    ```bash
    $ vim wc.input
    //---------
-   haha hehe heyhey
-   haha hoho hehe
-   haha heyhey hello
+   
    ```
 
 3. 调用example jar输出统计结果
 
    ```bash
-   $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar wordcount wcinput wcoutput
+   $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar wordcount wcinput wcoutput
    ```
 
 
@@ -551,7 +549,7 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
     <!--指定hadoop运行时产生文件的存储目录，比如namenode运行时产生的文件-->
     <property>
         <name>hadoop.tmp.dir</name>
-        <value>/opt/module/hadoop-2.10.0/data/tmp</value>
+        <value>/opt/module/hadoop-3.2.1/data/tmp</value>
         <!--value值配置主机域名或者ip地址-->
     </property>
 </configuration>
@@ -596,7 +594,7 @@ sbin/hadoop-daemon.sh start datanode
 
 访问namenode web服务
 
-浏览器打开 hadoop151:50070
+浏览器打开 hadoop151:9870
 
 ![](img/伪分布式下偶偶.png)
 
@@ -634,7 +632,7 @@ $ bin/hdfs dfs -put input input
 ##### 运行示例代码
 
 ```bash
-$ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar grep input output 'dfs[a-z.]+'
+$ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar grep input output 'dfs[a-z.]+'
 ```
 
  检查运行结果
@@ -675,6 +673,9 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
         <name>mapreduce.framework.name</name>
         <value>yarn</value>
     </property>
+    <property>
+        <name>mapreduce.application.classpath</name>  					  <value>$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/*:$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/lib/*</value>
+    </property>
 </configuration>
 ```
 
@@ -692,6 +693,10 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 		<name>yarn.resourcemanager.hostname</name>
 		<value>hadoop151</value>
 	</property>
+    <property>
+        <name>yarn.nodemanager.env-whitelist</name>
+        <value>JAVA_HOME,HADOOP_COMMON_HOME,HADOOP_HDFS_HOME,HADOOP_CONF_DIR,CLASSPATH_PREPEND_DISTCACHE,HADOOP_YARN_HOME,HADOOP_MAPRED_HOME</value>
+    </property>
 </configuration>
 ```
 
@@ -943,7 +948,7 @@ $ sudo cp xsync /bin
 <!-- 指定Hadoop运行时产生文件的存储目录 -->
 <property>
 		<name>hadoop.tmp.dir</name>
-		<value>/opt/module/hadoop-2.10.0/data/tmp</value>
+		<value>/opt/module/hadoop-3.2.1/data/tmp</value>
 </property>
 ```
 
@@ -1015,12 +1020,25 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 		<name>mapreduce.framework.name</name>
 		<value>yarn</value>
 </property>
+<!--指定mapreduce依赖的运行环境-->
+<property>
+  <name>yarn.app.mapreduce.am.env</name>
+  <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+</property>
+<property>
+  <name>mapreduce.map.env</name>
+  <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+</property>
+<property>
+  <name>mapreduce.reduce.env</name>
+  <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+</property>
 ```
 
 ##### 分发配置文件至集群
 
 ```bash
-$ xsync /opt/module/hadoop-2.10.0/etc/
+$ xsync /opt/module/hadoop-3.2.1/etc/
 ```
 
 #### 手动启动集群
@@ -1050,26 +1068,26 @@ $ jps
 在`hadoop152`、`hadoop153`以及`hadoop154`上分别启动`DataNode`
 
 ```bash
-[hadoop@hadoop152 hadoop-2.10.0]$ hadoop-daemon.sh start datanode
-[hadoop@hadoop152 hadoop-2.10.0]$ jps
+[hadoop@hadoop152 hadoop-3.2.1]$ hadoop-daemon.sh start datanode
+[hadoop@hadoop152 hadoop-3.2.1]$ jps
 3461 NameNode
 3608 Jps
 3561 DataNode
 -------------------
-[hadoop@hadoop153 hadoop-2.10.0]$ hadoop-daemon.sh start datanode
-[hadoop@hadoop153 hadoop-2.10.0]$ jps
+[hadoop@hadoop153 hadoop-3.2.1]$ hadoop-daemon.sh start datanode
+[hadoop@hadoop153 hadoop-3.2.1]$ jps
 3190 DataNode
 3279 Jps
 -------------
-[hadoop@hadoop154 hadoop-2.10.0]$ hadoop-daemon.sh start datanode
-[hadoop@hadoop154 hadoop-2.10.0]$ jps
+[hadoop@hadoop154 hadoop-3.2.1]$ hadoop-daemon.sh start datanode
+[hadoop@hadoop154 hadoop-3.2.1]$ jps
 3237 Jps
 3163 DataNode
 -------------------
-[hadoop@hadoop154 hadoop-2.10.0]$ hadoop-daemon.sh start secondarynamenode
+[hadoop@hadoop154 hadoop-3.2.1]$ hadoop-daemon.sh start secondarynamenode
 ```
 
-##### 4.访问`http://hadoop152:50070`
+##### 4.访问`http://hadoop152:9870`
 
 ![](img/完全分布式部署hdfs效果.png)
 
@@ -1228,13 +1246,15 @@ hadoop154,192.168.40.154 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAA
 
 ##### 运行群起脚本
 
-###### 1.配置slaves从节点
+###### 1.配置workers（slaves）从节点
+
+> hadoop2.x之前，workers不存在，只有slaves，hadoop3之后改名为workers
 
 ​	之前手动启动集群时，我们并没有配置`DataNode`和`NodeManager`,这几个服务需要有从节点来运行，而我们的主节点也是从节点
 
 ```bash
-# /opt/module/hadoop-2.10.0/etc/hadoop/slaves
-[hadoop@hadoop152 hadoop]$ vim slaves
+# /opt/module/hadoop-3.2.1/etc/hadoop/workers
+[hadoop@hadoop152 hadoop]$ vim workers
 ----------------------
 #删除localhost，添加
 hadoop152
@@ -1247,7 +1267,7 @@ hadoop154
 同步所有节点
 
 ```bash
-$ xsync slaves 153-154
+$ xsync workers 153-154
 ```
 
 ###### 2. 启动集群
@@ -1263,17 +1283,17 @@ $ xsync slaves 153-154
    在`hadoop152`下启动hdfs
 
    ```bash
-   [hadoop@hadoop152 hadoop-2.10.0]$ sbin/start-dfs.sh
-   [hadoop@hadoop152 hadoop-2.10.0]$ jps
+   [hadoop@hadoop152 hadoop-3.2.1]$ sbin/start-dfs.sh
+   [hadoop@hadoop152 hadoop-3.2.1]$ jps
    4166 NameNode
    4482 Jps
    4263 DataNode
    
-   [hadoop@hadoop153 hadoop-2.10.0]$ jps
+   [hadoop@hadoop153 hadoop-3.2.1]$ jps
    3218 DataNode
    3288 Jps
    
-   [hadoop@hadoop154 hadoop-2.10.0]$ jps
+   [hadoop@hadoop154 hadoop-3.2.1]$ jps
    3221 DataNode
    3283 SecondaryNameNode
    3364 Jps
@@ -1284,12 +1304,12 @@ $ xsync slaves 153-154
    **注意**：启动yarn的命令一定要在配置了`ResourceManager`的机器上执行
 
    ```bash
-   [hadoop@hadoop153 hadoop-2.10.0]$ sbin/start-yarn.sh
+   [hadoop@hadoop153 hadoop-3.2.1]$ sbin/start-yarn.sh
    ```
 
 4. web端查看hdfs和yarn
 
-   分别访问 http://hadoop152:50070   ,   http://hadoop154:50090  ， http://hadoop153:8088 查看HDFS和YARN的信息
+   分别访问 http://hadoop152:9870   ,   http://hadoop154:50090  ， http://hadoop153:8088 查看HDFS和YARN的信息
 
    ![](img/检查NameNode.png)
 
@@ -1326,7 +1346,7 @@ $ xsync slaves 153-154
 4. 调用example jar输出统计结果
 
    ```bash
-   $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.10.0.jar wordcount /wcinput /wcoutput
+   $ bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar wordcount /wcinput /wcoutput
    ```
 
 5. 检查结果
@@ -1383,7 +1403,7 @@ $ xsync slaves 153-154
 4. 启动历史服务器
 
    ```bash
-   [hadoop@hadoop154 hadoop-2.10.0]$ sbin/mr-jobhistory-daemon.sh start historyserver
+   [hadoop@hadoop154 hadoop-3.2.1]$ sbin/mr-jobhistory-daemon.sh start historyserver
    ```
 
 ##### 2.配置日志聚集
