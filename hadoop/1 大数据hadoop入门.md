@@ -220,7 +220,7 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
 
 ### 大数据技术生态体系
 
-![](img/大数据生态体系.PNG)
+![](img/大数据生态.png)
 
 图中涉及的技术名词解释如下：
 
@@ -238,7 +238,7 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
 
    （4）支持Hadoop并行数据加载。
 
-4. Storm：Storm用于“连续计算”，对数据流做连续查询，在计算时就将结果以流的形式输出给用户。**目前storm正在被flink取代**
+4. Storm：Storm用于“连续计算”，对数据流做连续查询，在计算时就将结果以流的形式输出给用户。**目前storm正在被sparkstream以及flink取代**
 
 5. Spark：Spark是当前最流行的开源大数据内存计算框架。可以基于Hadoop上存储的大数据进行计算。
 
@@ -252,7 +252,7 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
 
 11. Mahout：Apache Mahout是个可扩展的机器学习和数据挖掘库。
 
-12. ZooKeeper：Zookeeper是Google的Chubby一个开源的实现。它是一个针对大型分布式系统的可靠协调系统，提供的功能包括：配置维护、名字服务、 分布式同步、组服务等。ZooKeeper的目标就是封装好复杂易出错的关键服务，将简单易用的接口和性能高效、功能稳定的系统提供给用户。
+12. ZooKeeper：Zookeeper是Google的Chubby一个开源的实现。它是一个针对大型分布式系统的可靠协调系统，提供的功能包括：配置维护、命名服务、 分布式同步、组服务等。ZooKeeper的目标就是封装好复杂易出错的关键服务，将简单易用的接口和性能高效、功能稳定的系统提供给用户，在hadoop集群里，负责为诸如hdfs、yarn、hbase等服务提供高可用。
 
 ### 推荐系统架构示例
 
@@ -276,7 +276,7 @@ MapReduce将计算过程分为两个阶段：Map和Reduce
 
    ```bash
    $ systemctl stop firewalld
-   $systemctl disabled firewalld
+   $ systemctl disabled firewalld
    ```
 
 2. 创建用户
@@ -594,7 +594,7 @@ sbin/hadoop-daemon.sh start datanode
 
 访问namenode web服务
 
-浏览器打开 hadoop151:9870
+浏览器打开 hadoop151:9870(50070)
 
 ![](img/伪分布式下偶偶.png)
 
@@ -979,7 +979,7 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 
 ##### 3.yarn配置文件
 
-`yarn-env.sh`: 配置yarn运行所依赖java运行环境
+`yarn-env.sh`: 配置yarn运行所依赖java运行环境（hadoop 3.x不需要配置）
 
 ```bash
 $ vi yarn-env.sh
@@ -1005,7 +1005,7 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 
 ##### 4.MapReduce配置文件
 
-`mapred-env.sh`:配置mapreduce运行依赖的java环境
+`mapred-env.sh`:配置mapreduce运行依赖的java环境（hadoop 3.x不需要配置）
 
 ```bash
 $ vi mapred-env.sh
@@ -1020,7 +1020,7 @@ export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
 		<name>mapreduce.framework.name</name>
 		<value>yarn</value>
 </property>
-<!--指定mapreduce依赖的运行环境-->
+<!--指定mapreduce依赖的运行环境，hadoop3.x需要-->
 <property>
   <name>yarn.app.mapreduce.am.env</name>
   <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
@@ -1087,7 +1087,7 @@ $ jps
 [hadoop@hadoop154 hadoop-3.2.1]$ hadoop-daemon.sh start secondarynamenode
 ```
 
-##### 4.访问`http://hadoop152:9870`
+##### 4.访问`http://hadoop152:9870(50070)`
 
 ![](img/完全分布式部署hdfs效果.png)
 
@@ -1309,7 +1309,7 @@ $ xsync workers 153-154
 
 4. web端查看hdfs和yarn
 
-   分别访问 http://hadoop152:9870   ,   http://hadoop154:50090  ， http://hadoop153:8088 查看HDFS和YARN的信息
+   分别访问 http://hadoop152:9870(50070)   ,   http://hadoop154:50090  ， http://hadoop153:8088 查看HDFS和YARN的信息
 
    ![](img/检查NameNode.png)
 
@@ -1317,7 +1317,125 @@ $ xsync workers 153-154
 
    ![](img/snn检查.png)
 
+##### jpsall脚本快速查询所有节点进程
 
+​	jps命令可以查询当前主机正在运行的java进程，为了方便查看，由于我们配置了ssh免密登录，我们可以用脚本快速查看所有节点进程
+
+首先，试着在hadoop152上查看hadoop154的java进程
+
+```bash
+$ ssh hadoop154 "jps"
+```
+
+编写脚本
+
+```bash
+#!/bin/bash
+
+ips=$1
+
+if [ $ips ]
+then
+ false
+else
+  ips=152-154
+fi
+OLD_IFS=$IFS
+IFS="-"
+arr=($ips)
+IFS=OLD_IFS
+start=${arr[0]}
+end=${arr[1]}
+
+for((suffix=$start;suffix<=$end;suffix++))do
+    echo "-------hadoop$suffix--------"
+    ssh hadoop$suffix "source /etc/profile && jps"
+done
+```
+
+加入/bin目录，开放执行权限
+
+```bash
+$ sudo cp jpsall /bin/
+$ sudo chmod +x /bin/jpsall
+```
+
+执行
+
+```bash
+$ jpsall 152-154
+------------
+-------hadoop152--------
+1714 NameNode
+2611 NodeManager
+1879 DataNode
+3420 Jps
+-------hadoop153--------
+1600 DataNode
+1858 ResourceManager
+2002 NodeManager
+2821 Jps
+-------hadoop154--------
+1696 SecondaryNameNode
+1571 DataNode
+2179 Jps
+1836 NodeManager
+```
+
+##### 群发命令脚本
+
+​	有时候我们需要向集群所有成员群发命令，利用ssh也可以实现，编辑一下脚本
+
+```bash
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+echo "error.. need args"
+exit 1
+fi
+
+command=$1
+host=$2
+
+if [ $host ]
+then 
+ false
+else
+ host="152,153,154"
+fi
+
+var=${host//,/ } #这里是将var中的,替换为空格 
+for element in $var 
+do 
+echo ssh 192.168.40.$element $command
+ssh 192.168.40.$element $command
+done 
+
+```
+
+加入`/bin目录`，加入执行权
+
+```bash
+$ sudo chomd +x execc 
+```
+
+执行一条命令测试
+
+```bash
+$ execc "ls /opt" 
+ssh 192.168.40.152 ls /opt
+！
+module
+software
+ssh 192.168.40.153 ls /opt
+！
+module
+software
+ssh 192.168.40.154 ls /opt
+！
+module
+software
+```
 
 ##### mapreduce测试
 
@@ -1403,6 +1521,8 @@ $ xsync workers 153-154
 4. 启动历史服务器
 
    ```bash
+   [hadoop@hadoop154 hadoop-3.2.1]$  mapred --daemon start historyserver
+   #以下hadoop2中的命令，3已将其过时
    [hadoop@hadoop154 hadoop-3.2.1]$ sbin/mr-jobhistory-daemon.sh start historyserver
    ```
 
