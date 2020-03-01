@@ -415,12 +415,12 @@ $ hdfs dfs -setrep 10 /sanguo/shuguo/kongming.txt
 3.下载hadoop在windows上运行的必要工具winUtils
 
 > github项目地址：https://github.com/cdarlint/winutils
->
-> 请根据hadoop不同版本下载对应的winutils和hadoop.dll
+
+请根据hadoop不同版本下载对应的**winutils**和**hadoop.dll**两个文件
 
 ![](img/winutils下载地址.png)
 
-4.将winutils和hadoop.dll放入bin目录
+4.将**winutils**和**hadoop.dll**放入bin目录
 
 ![](img/winutils位置.png)
 
