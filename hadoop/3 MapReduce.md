@@ -2242,8 +2242,8 @@ public int compareTo(FlowBean o) {
 
 6. `Combiner`在整个MapTask过程中会进行**两次**
 
-   - 第一次对每隔环形缓冲区溢出的数据块进行合并
-   - 第二次在多个溢出数据块做完归并排序之后
+   - 第一次对每个环形缓冲区**溢出之前**的数据进行合并
+   - 第二次在多个溢出数据块做**归并排序过程中**进行combiner
 
    ![](img/两次combiner.png)
 
@@ -2555,9 +2555,9 @@ job.setCombinerClass(WordcountReducer.class);
 >
 > ```java
 > protected void reduce(OrderWritable key, Iterable<NullWritable> values, Context context) throws IOException, InterruptedException {
->     for(NullWritable value:values){
->         context.write(key,NullWritable.get());
->     }
+>  for(NullWritable value:values){
+>      context.write(key,NullWritable.get());
+>  }
 > }
 > ```
 >
@@ -2577,9 +2577,9 @@ job.setCombinerClass(WordcountReducer.class);
 >
 > ```java
 > protected void reduce(OrderWritable key, Iterable<NullWritable> values, Context context) throws IOException, InterruptedException {
->     while(values.iterator().hasNext()){
->         context.write(key,values.iterator().next());
->     }
+>  while(values.iterator().hasNext()){
+>      context.write(key,values.iterator().next());
+>  }
 > }
 > ```
 >
@@ -2589,7 +2589,7 @@ job.setCombinerClass(WordcountReducer.class);
 >
 > ```java
 > try {
->         nextKeyValue();
+>      nextKeyValue();
 > ```
 >
 > `nextKeyValue`方法内部
@@ -2604,6 +2604,891 @@ job.setCombinerClass(WordcountReducer.class);
 > 实际上，迭代器中并不是存了多个kv数据的对象，而是只有一个k和v对象，并且在执行`next`方法时，通过反序列化磁盘中一条条的数据来设置k和v的值，在`reduce`方法中的key实际上和迭代器中的key指向了同一片内存空间。还是好比两个杯子，一个用来装key，一个用来装value，杯子不变，杯子里的东西可以变
 >
 > ![](img/reducervalues迭代原理.png)
->
-> 
 
+### MapTask工作机制
+
+![](img/MapTask工作机制.png)
+
+#### MapTask几个阶段
+
+##### 1.Read阶段
+
+​	`MapTask`通过用户编写的`RecordReader`，从输入`InputSplit`中解析出一个个key/value。
+
+##### 2.Map阶段
+
+​	该节点主要是将解析出的key/value交给用户编写map()函数处理，并产生一系列新的key/value。
+
+##### 3.Collect收集阶段
+
+​	在用户编写map()函数中，当数据处理完成后，一般会调用`OutputCollector.collect()`输出结果。在该函数内部，它会将生成的key/value分区（调用`Partitioner`），并写入一个环形内存缓冲区中。
+
+##### 4.Spill阶段
+
+​	即“溢写”，当环形缓冲区满后，`MapReduce`会将数据写到本地磁盘上，生成一个临时文件。需要注意的是，将数据写入本地磁盘之前，先要对数据进行一次本地排序，并在必要时对数据进行合并、压缩等操作。
+
+###### 溢写阶段详情：
+
+1. 利用快速排序算法对缓存区内的数据进行排序，排序方式是，先按照分区编号`Partition`进行排序，然后按照key进行排序。这样，经过排序后，数据以分区为单位聚集在一起，且同一分区内所有数据按照key有序。
+
+2. 按照分区编号由小到大依次将每个分区中的数据写入任务工作目录下的临时文件`output/spillN.out`（N表示当前溢写次数）中。**如果用户设置了**`Combiner`，**则写入文件之前**，对每个分区中的数据进行一次聚集操作。
+
+3. 将分区数据的元信息写到内存索引数据结构`SpillRecord`中，其中每个分区的元信息包括在临时文件中的偏移量、压缩前数据大小和压缩后数据大小。如果当前内存索引大小超过1MB，则将内存索引写到文件`output/spillN.out.index`中。
+
+##### 5.Combine阶段
+
+> 这个Combine不是指Combiner，而是指多个溢出文件的归并排序
+
+​	当所有数据处理完成后，`MapTask`对所有临时文件进行一次合并，以确保最终只会生成一个数据文件。
+
+​	当所有数据处理完后，MapTask会将所有临时文件合并成一个大文件，并保存到文件`output/file.out`中，同时生成相应的索引文件`output/file.out.index`。**如果用户配置了**`Combiner`，那么`Combiner`会在**文件合并的过程中**，进行聚集操作。
+
+​	在进行文件合并过程中，MapTask以分区为单位进行合并。对于某个分区，它将采用多轮递归合并的方式。每轮合并`io.sort.factor`（默认10）个文件，并将产生的文件重新加入待合并列表中，对文件排序后，重复以上过程，直到最终得到一个大文件。
+
+​	让每个MapTask最终只生成一个数据文件，可避免同时打开大量文件和同时读取大量小文件产生的随机读取带来的开销。
+
+### ReduceTask工作机制
+
+![](img/ReduceTask阶段.png)
+
+#### ReduceTask几个阶段
+
+##### 1.Copy阶段
+
+​	ReduceTask从各个MapTask上远程拷贝一片数据，并针对某一片数据，如果其大小超过一定阈值，则写到磁盘上，否则直接放到内存中。
+
+##### 2.Merge阶段
+
+​	在远程拷贝数据的同时，ReduceTask启动了两个后台线程对内存和磁盘上的文件进行合并，以防止内存使用过多或磁盘上文件过多。
+
+##### 3.Sort阶段
+
+​	按照MapReduce语义，用户编写reduce()函数输入数据是按key进行聚集的一组数据。为了将key相同的数据聚在一起，Hadoop采用了基于排序的策略。由于各个MapTask已经实现对自己的处理结果进行了局部排序，因此，ReduceTask只需对所有数据进行一次归并排序即可。
+
+##### 4.Reduce阶段
+
+​	reduce()函数将计算结果写到HDFS上。
+
+#### 设置ReduceTask并行度（个数）
+
+​	ReduceTask的并行度同样影响整个Job的执行并发度和执行效率，但与MapTask的并发数由切片数决定不同，ReduceTask数量的决定是可以直接手动设置：
+
+```java
+// 默认值是1，手动设置为4
+job.setNumReduceTasks(4);
+```
+
+实验：测试ReduceTask多少合适
+
+（1）实验环境：1个Master节点，16个Slave节点：CPU:8GHZ，内存: 2G
+
+（2）实验结论：
+
+下表展示了测试结果，改变ReduceTask （数据量为1GB）
+
+| MapTask =16 |      |      |      |      |      |      |      |      |      |      |
+| ----------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| ReduceTask  | 1    | 5    | 10   | 15   | 16   | 20   | 25   | 30   | 45   | 60   |
+| 总时间      | 892  | 146  | 110  | 92   | 88   | 100  | 128  | 101  | 145  | 104  |
+
+**注意事项**
+
+1. ReduceTask=0，表示没有Reduce阶段，输出文件个数和Map个数一致。
+
+2. ReduceTask默认值就是1，所以输出文件个数为一个。
+3. 如果数据分布不均匀，就有可能在Reduce阶段产生数据倾斜。
+4. ReduceTask数量并不是任意设置，还要考虑业务逻辑需求，有些情况下，需要计算全局汇总结果，就只能有1个ReduceTask。
+5. 具体多少个ReduceTask，需要根据集群性能而定。
+6. 如果分区数不是1，但是ReduceTask为1，是否执行分区过程。答案是：不执行分区过程。因为在MapTask的源码中，执行分区的前提是先判断ReduceNum个数是否大于1。不大于1肯定不执行。
+
+### OutputFormat数据输出
+
+#### OutputFormat接口实现类
+
+​	`OutputFormat`是MapReduce输出的基类，所有实现MapReduce输出都实现了 `OutputFormat`接口。下面我们介绍几种常见的`OutputFormat`实现类。
+
+1．文本输出`TextOutputFormat`
+
+​        默认的输出格式是`TextOutputFormat`，它把每条记录写为文本行。它的键和值可以是任意类型，因为`TextOutputFormat`调用toString()方法把它们转换为字符串。
+
+2．`SequenceFileOutputFormat`
+
+ 将`SequenceFileOutputFormat`输出作为后续 `MapReduce`任务的输入，这便是一种好的输出格式，因为它的格式紧凑，很容易被压缩。
+
+#### 自定义OutPutFormat
+
+使用场景
+
+为了实现控制最终文件的输出路径和输出格式，可以自定义`OutputFormat`。
+
+例如：要在一个MapReduce程序中根据数据的不同输出两类结果到不同目录，这类灵活的输出需求可以通过自定义`OutputFormat`来实现。
+
+自定义`OutputFormat`步骤
+
+1. 自定义一个类继承`FileOutputFormat`。
+2. 改写`RecordWriter`，具体改写输出数据的方法`write()`。
+
+#### 自定义案例
+
+##### 1.需求
+
+过滤输入的log日志，包含atguigu的网站输出到e:/neuedu.log，不包含atguigu的网站输出到e:/other.log。
+
+```
+http://www.baidu.com
+http://www.google.com
+http://cn.bing.com
+http://www.neuedu.com
+http://www.sohu.com
+http://www.sina.com
+http://www.sin2a.com
+http://www.sin2desa.com
+http://www.sindsafa.com
+```
+
+期望输出数据：
+
+neuedu.log
+
+```
+http://www.neuedu.com
+```
+
+other.log
+
+```
+http://www.baidu.com
+http://www.google.com
+http://cn.bing.com
+http://www.sohu.com
+http://www.sina.com
+http://www.sin2a.com
+http://www.sin2desa.com
+http://www.sindsafa.com
+```
+
+##### 2.需求分析
+
+​	过滤输出输入文件，包含`neuedu`的输出到`neuedu.log`，通过自定义`OutPutFormat`实现。
+
+##### 3. 代码实现
+
+1. 编写`FilterOutPutFormat`类
+
+   ```java
+   package com.neuedu.filter;
+   
+   import org.apache.hadoop.fs.FSDataOutputStream;
+   import org.apache.hadoop.fs.FileSystem;
+   import org.apache.hadoop.fs.Path;
+   import org.apache.hadoop.io.IOUtils;
+   import org.apache.hadoop.io.LongWritable;
+   import org.apache.hadoop.io.Text;
+   import org.apache.hadoop.mapreduce.RecordWriter;
+   import org.apache.hadoop.mapreduce.TaskAttemptContext;
+   import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+   
+   import java.io.IOException;
+   
+   public class FilterOutPutFormat extends FileOutputFormat<LongWritable, Text> {
+       @Override
+       public RecordWriter<LongWritable, Text> getRecordWriter(TaskAttemptContext job) throws IOException, InterruptedException {
+   
+           FilterRecordWriter filterRecordWriter = new FilterRecordWriter();
+           filterRecordWriter.init(job);
+           return filterRecordWriter;
+       }
+   
+   
+       public static class FilterRecordWriter extends RecordWriter<LongWritable,Text>{
+   
+           FSDataOutputStream neuedu;
+           FSDataOutputStream other;
+   
+   
+           public void init(TaskAttemptContext job) throws IOException {
+               String outDir = job.getConfiguration().get(FileOutputFormat.OUTDIR);
+               FileSystem fileSystem = FileSystem.get(job.getConfiguration());
+               other = fileSystem.create(new Path(outDir+"/other.log"));
+               neuedu = fileSystem.create(new Path(outDir+"/neuedu.log"));
+           }
+   
+   
+           @Override
+           public void write(LongWritable key, Text value) throws IOException, InterruptedException {
+               if(value.toString().contains("neuedu"))
+                   neuedu.write((value.toString()+"\n").getBytes());
+               else
+                   other.write((value.toString()+"\n").getBytes());
+           }
+   
+           @Override
+           public void close(TaskAttemptContext context) throws IOException, InterruptedException {
+               IOUtils.closeStream(other);
+               IOUtils.closeStream(neuedu);
+           }
+       }
+   }
+   
+   ```
+
+2. 编写`FilterDriver`
+
+   ```java
+   package com.neuedu.filter;
+   
+   import org.apache.hadoop.conf.Configuration;
+   import org.apache.hadoop.fs.Path;
+   import org.apache.hadoop.mapreduce.Job;
+   import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+   import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+   
+   import java.io.IOException;
+   
+   public class FilterDriver {
+   
+   
+        public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+                Job job = Job.getInstance(new Configuration());
+   
+                job.setJarByClass(FilterDriver.class);
+   
+                job.setOutputFormatClass(FilterOutPutFormat.class);
+   
+                FileInputFormat.setInputPaths(job, new Path("f:/address.txt"));
+                FileOutputFormat.setOutputPath(job, new Path("f:/output"));
+   
+                boolean result = job.waitForCompletion(true);
+                System.exit(result ? 0 : 1);
+            }
+   }
+   
+   ```
+
+3. 测试运行
+
+### Join多种应用
+
+> 开始之前，回忆一下sql中的`join`关键字用法
+>
+> ```sql
+> select * from student left join on classes on student.class_id = classes.id
+> ```
+>
+> mapreduce中的join也用于处理多表关联的问题，后期学了**hive**，你会明白，我们可以像写sql一样写mapreduce
+
+#### ReduceJoin
+
+​	所谓**ReduceJoin**,就是指join的过程发生在reduce阶段。
+
+#### ReduceJoin案例
+
+##### 需求
+
+​	两个文件`order.txt`和`pd.txt`分别订单表和商品表
+
+订单`order.txt`
+
+```
+1001	01	1
+1002	02	2
+1003	03	3
+1004	01	4
+1005	02	5
+1006	03	6
+```
+
+相当于订单表
+
+| id   | pid  | amount |
+| ---- | ---- | ------ |
+| 1001 | 01   | 1      |
+| 1002 | 02   | 2      |
+| 1003 | 03   | 3      |
+| 1004 | 01   | 4      |
+| 1005 | 02   | 5      |
+| 1006 | 03   | 6      |
+
+商品`pd.txt`
+
+```
+01	小米
+02	华为
+03	格力
+```
+
+相当于商品表
+
+| pid  | pname |
+| ---- | ----- |
+| 01   | 小米  |
+| 02   | 华为  |
+| 03   | 格力  |
+
+最终结果
+
+| id   | pname | amount |
+| ---- | ----- | ------ |
+| 1001 | 小米  | 1      |
+| 1004 | 小米  | 4      |
+| 1002 | 华为  | 2      |
+| 1005 | 华为  | 5      |
+| 1003 | 格力  | 3      |
+| 1006 | 格力  | 6      |
+
+##### 需求分析
+
+​	要通过`ReduceJoin`实现以上工程，关键问题在于**key选择和key排序**,这里我们需要在map阶段指定key的排序规则，再在reduce阶段通过**GroupingComparator**进行分组
+
+**key的排序规则**：
+
+1. 第一排序规则为`pid`，将相同pid的数据靠在一起
+
+2. 第二排序为`pname`，有`pname`的都是商品表里的数据，让他放在最前面
+
+
+最终的排序结果如下：
+
+```java
+01	小米
+1001	01	1
+1004	01	4
+02	华为
+1002	02	2
+1005	02	5
+...
+```
+
+经过排序后再reduce阶段我们就可以通过自定义分组获取pid相同的数据，并且每组的第一条一定是商品信息，这样我们就可以给后续的数据设置pname，从而达到输出效果
+
+##### 代码实现
+
+1. 创建`OrderBean`
+
+   ```java
+   public static class OrderBean implements WritableComparable<OrderBean> {
+   
+       private String pid;
+       private String oid;
+       private Integer amount;
+   
+       public String getPid() {
+           return pid;
+       }
+   
+       public void setPid(String pid) {
+           this.pid = pid;
+       }
+   
+       public String getOid() {
+           return oid;
+       }
+   
+       public void setOid(String oid) {
+           this.oid = oid;
+       }
+   
+       public Integer getAmount() {
+           return amount;
+       }
+   
+       public void setAmount(Integer amount) {
+           this.amount = amount;
+       }
+   
+       public String getPname() {
+           return pname;
+       }
+   
+       public void setPname(String pname) {
+           this.pname = pname;
+       }
+   
+       private String pname;
+   
+   
+       @Override
+       public int compareTo(OrderBean o) {
+           int compare = pid.compareTo(o.getPid());
+   
+           if (compare == 0) {
+               compare = o.getPname().compareTo(this.getPname());
+               if (compare == 0) {
+                   compare = oid.compareTo(o.getOid());
+               }
+           }
+           return  compare;
+   
+       }
+   
+       @Override
+       public void write(DataOutput dataOutput) throws IOException {
+           dataOutput.writeUTF(oid);
+           dataOutput.writeUTF(pid);
+           dataOutput.writeUTF(pname);
+           dataOutput.writeInt(amount);
+       }
+   
+       @Override
+       public void readFields(DataInput dataInput) throws IOException {
+           oid = dataInput.readUTF();
+           pid = dataInput.readUTF();
+           pname = dataInput.readUTF();
+           amount = dataInput.readInt();
+       }
+   
+       @Override
+       public String toString() {
+           return oid+"\t"+pname+"\t"+amount;
+       }
+   }
+   ```
+
+2. 创建Mapper
+
+   ```java
+   public static class RJMapper extends Mapper<LongWritable, Text,OrderBean, NullWritable>{
+   
+       private OrderBean k = new OrderBean();
+       private String fileName;
+   
+       /**
+            * 获取切片的文件原文件名，根据文件名来采取不同输出数据策略
+            * @param context
+            * @throws IOException
+            * @throws InterruptedException
+            */
+       @Override
+       protected void setup(Context context) throws IOException, InterruptedException {
+           FileSplit inputSplit = (FileSplit) context.getInputSplit();
+           fileName = inputSplit.getPath().getName();
+       }
+   
+       @Override
+       protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+           String[] split = value.toString().split("\t");
+           if(fileName.contains("order")){
+               k.setOid(split[0]);
+               k.setPid(split[1]);
+               k.setAmount(Integer.valueOf(split[2]));
+               k.setPname("");
+           }else{
+               k.setOid("");
+               k.setPid(split[0]);
+               k.setAmount(0);
+               k.setPname(split[1]);
+           }
+           context.write(k,NullWritable.get());
+       }
+   }
+   ```
+
+3. 创建GroupingComparator
+
+   ```java
+   public static class RJGroupingComparator extends WritableComparator{
+   
+       public RJGroupingComparator() {
+           super(OrderBean.class,true);
+       }
+   
+       @Override
+       public int compare(WritableComparable a, WritableComparable b) {
+           OrderBean oa = (OrderBean) a;
+           OrderBean ob = (OrderBean) b;
+   
+   
+           return oa.getPid().compareTo(ob.getPid());
+       }
+   }
+   ```
+
+4. 创建Reducer
+
+   ```java
+    public static class  RJReducer extends Reducer<OrderBean, NullWritable,OrderBean, NullWritable>{
+   
+        @Override
+        protected void reduce(OrderBean key, Iterable<NullWritable> values, Context context) throws IOException, InterruptedException {
+            //拿到的第一个key就是商品表的数据，将商品pname设置给后续的key，然后写出
+            values.iterator().next();
+            String pname = key.getPname();
+            while(values.iterator().hasNext()){
+                values.iterator().next();
+                key.setPname(pname);
+                context.write(key,NullWritable.get());
+            }
+        }
+    }
+   ```
+
+5. 创建Driver
+
+   ```java
+   public class RJDriver {
+   
+        public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+                Job job = Job.getInstance(new Configuration());
+   
+                job.setMapperClass(RJMapper.class);
+                job.setReducerClass(RJReducer.class);
+   
+                job.setMapOutputKeyClass(OrderBean.class);
+                job.setMapOutputValueClass(NullWritable.class);
+   
+                job.setOutputKeyClass(OrderBean.class);
+                job.setOutputValueClass(NullWritable.class);
+   
+                job.setGroupingComparatorClass(RJGroupingComparator.class);
+   
+                FileInputFormat.setInputPaths(job, new Path("f:/input"));
+                FileOutputFormat.setOutputPath(job, new Path("f:/output"));
+   
+                boolean result = job.waitForCompletion(true);
+                System.exit(result ? 0 : 1);
+            }
+   }
+   ```
+
+6. 测试运行
+
+   ```
+   1001	小米	1
+   1004	小米	4
+   1002	华为	2
+   1005	华为	5
+   1003	格力	3
+   1006	格力	6
+   ```
+
+##### ReduceJoin总结：
+
+**缺点**：这种方式中，合并的操作是在Reduce阶段完成，Reduce端的处理压力太大，Map节点的运算负载则很低，资源利用率不高，且在Reduce阶段极易产生数据倾斜。
+
+#### MapJoin
+
+​	Map Join适用于**一张表十分小**、一张表很大的场景。原因是我们在map阶段，如果所有表的数据量都很大，我们是无法在某一个MapTask中将整张表的数据全部加载进来的，那就失去了分布式的意义，因此，至少一张表的数据**要很小**。
+
+##### 优点
+
+>  思考：在Reduce端处理过多的表，非常容易产生数据倾斜。怎么办？
+>
+> 什么是数据倾斜？
+>
+> 假如我们有10万条数据，3个ReduceTask，那么其中有一个reduceTask的数据处理量是9万条，那么这就是数据倾斜。
+
+在Map端缓存多张表，提前处理业务逻辑，这样增加Map端业务，减少Reduce端数据的压力，尽可能的减少数据倾斜。
+
+##### 具体办法：采用DistributedCache
+
+（1）在Mapper的setup阶段，将文件读取到缓存集合中。
+
+（2）在驱动函数中加载缓存。
+
+```java
+// 缓存普通文件到Task运行节点。
+job.addCacheFile(new URI("file://e:/cache/pd.txt"));
+```
+
+#### Map Join案例
+
+##### 需求
+
+​	同Reduce Join
+
+##### 需求分析
+
+![](img/MapJoin需求分析.png)
+
+##### 实现代码
+
+1. 创建驱动类，加载缓存
+
+   ```java
+   public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException, URISyntaxException {
+           Job job = Job.getInstance(new Configuration());
+           job.setJarByClass(MJDriver.class);
+   
+           job.setMapperClass(MJMapper.class);
+   
+   
+           job.setMapOutputKeyClass(RJDriver.OrderBean.class);
+           job.setMapOutputValueClass(NullWritable.class);
+   
+           job.addCacheFile(new URI("file:///f:/input/pd.txt"));
+   
+           FileInputFormat.setInputPaths(job, new Path("f:/input/order.txt"));
+           FileOutputFormat.setOutputPath(job, new Path("f:/output"));
+   
+   
+           boolean result = job.waitForCompletion(true);
+           System.exit(result ? 0 : 1);
+       }
+   }
+   ```
+
+2. 在Mapper中读取缓存
+
+   ```java
+   public static class MJMapper extends Mapper<LongWritable, Text, RJDriver.OrderBean, NullWritable> {
+   
+       Map<String,String> cache = new HashMap<>();
+       RJDriver.OrderBean k = new RJDriver.OrderBean();
+   
+       @Override
+       protected void setup(Context context) throws IOException, InterruptedException {
+           String path = context.getCacheFiles()[0].getPath().toString();
+           BufferedReader br = new BufferedReader(new FileReader(path));
+           //hdfs开流
+          //FileSystem fs = FileSystem.get(context.getConfiguration());
+           //BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(path)), "UTF-8"));
+           String line;
+           while(StringUtils.isNotEmpty(line = br.readLine())){
+               String[] split = line.split("\t");
+               cache.put(split[0],split[1]);
+           }
+       }
+   
+       @Override
+       protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+           String[] split = value.toString().split("\t");
+           k.setPname(cache.get(split[1]));
+           k.setPid(split[1]);
+           k.setOid(split[0]);
+           k.setAmount(Integer.valueOf(split[2]));
+           context.write(k,NullWritable.get());
+       }
+   }
+   ```
+
+### 计数器应用
+
+ 	Hadoop为每个作业维护若干内置计数器，以描述多项指标。例如，某些计数器记录已处理的字节数和记录数，使用户可监控已处理的输入数据量和已产生的输出数据量。
+
+##### 计数器API
+
+1. 采用枚举的方式统计计数
+
+   ```java
+   enum MyCounter{MALFORORMED,NORMAL}
+   //对枚举定义的自定义计数器加1
+   context.getCounter(MyCounter.MALFORORMED).increment(1);
+   ```
+
+2. 采用计数器组、计数器名称的方式统计
+
+   ```java
+   context.getCounter("counterGroup", "counter").increment(1);
+   ```
+
+   组名和计数器名称随便起，但最好有意义。
+
+3. 计数结果在程序运行后的控制台上查看。
+
+##### 计数器案例实操
+
+详见数据清洗案例。
+
+### 数据清洗（ETL）
+
+​	在运行核心业务MapReduce程序之前，往往要先对数据进行清洗，清理掉不符合用户要求的数据。清理的过程往往只需要运行Mapper程序，不需要运行Reduce程序。
+
+> 实际开发者，不会用Mapper去进行数据进行ETL，ETL工具多了去了
+
+**注意**：下面的例子**主要用于演示计数器**，而不是ETL
+
+#### 数据清洗案例1
+
+##### 1.需求
+
+去除日志中字段长度小于等于11的日志。
+
+输入文件`web.log`
+
+```java
+194.237.142.21 - - [18/Sep/2013:06:49:18 +0000] "GET /wp-content/uploads/2013/07/rstudio-git3.png HTTP/1.1" 304 0 "-" "Mozilla/4.0 (compatible;)"
+183.49.46.228 - - [18/Sep/2013:06:49:23 +0000] "-" 400 0 "-" "-"
+163.177.71.12 - - [18/Sep/2013:06:49:33 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+163.177.71.12 - - [18/Sep/2013:06:49:36 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+101.226.68.137 - - [18/Sep/2013:06:49:42 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+101.226.68.137 - - [18/Sep/2013:06:49:45 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+60.208.6.156 - - [18/Sep/2013:06:49:48 +0000] "GET /wp-content/uploads/2013/07/rcassandra.png HTTP/1.0" 200 185524 "http://cos.name/category/software/packages/" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/29.0.1547.66 Safari/537.36"
+...........
+```
+
+**期望输出数据**：每行字段长度都大于11。
+
+##### 2.需求分析
+
+需要在Map阶段对输入的数据根据规则进行过滤清洗。
+
+##### 3.实现代码
+
+1. 编写`LogMapper`类
+
+   ```java
+   public static class LogMapper extends Mapper<LongWritable, Text,Text, BooleanWritable>{
+   
+       private Text k = new Text();
+       private BooleanWritable v = new BooleanWritable(false);
+   
+       @Override
+       protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+           String[] split = value.toString().split(" ");
+           for(String field:split){
+               k.set(field);
+               if(field.length()>11){
+                   v.set(true);
+                   context.getCounter("logValid","true").increment(1);
+               }else{
+                   v.set(true);
+                   context.getCounter("logValid","false").increment(1);
+               }
+               context.write(k,v);
+           }
+       }
+   }
+   ```
+
+2. 编写`LogDriver`类
+
+   ```java
+   public class LogDriver {
+   
+        public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+                Job job = Job.getInstance(new Configuration());
+                job.setJarByClass(LogDriver.class);
+   
+                job.setMapperClass(LogMapper.class);
+   
+                job.setMapOutputKeyClass(Text.class);
+                job.setMapOutputValueClass(BooleanWritable.class);
+   
+                FileInputFormat.setInputPaths(job, new Path("f:/web.log"));
+                FileOutputFormat.setOutputPath(job, new Path("f:/output"));
+   
+                boolean result = job.waitForCompletion(true);
+                System.exit(result ? 0 : 1);
+            }
+   }
+   ```
+
+3. 查看运行日志
+
+   ```
+   ...
+   logValid
+   		false=189446
+   		true=88015
+   ....
+   ```
+
+#### 数据清洗案例2
+
+##### 1.需求
+
+去除日志中状态码为200的日志。
+
+输入文件`web.log`
+
+```java
+194.237.142.21 - - [18/Sep/2013:06:49:18 +0000] "GET /wp-content/uploads/2013/07/rstudio-git3.png HTTP/1.1" 304 0 "-" "Mozilla/4.0 (compatible;)"
+183.49.46.228 - - [18/Sep/2013:06:49:23 +0000] "-" 400 0 "-" "-"
+163.177.71.12 - - [18/Sep/2013:06:49:33 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+163.177.71.12 - - [18/Sep/2013:06:49:36 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+101.226.68.137 - - [18/Sep/2013:06:49:42 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+101.226.68.137 - - [18/Sep/2013:06:49:45 +0000] "HEAD / HTTP/1.1" 200 20 "-" "DNSPod-Monitor/1.0"
+60.208.6.156 - - [18/Sep/2013:06:49:48 +0000] "GET /wp-content/uploads/2013/07/rcassandra.png HTTP/1.0" 200 185524 "http://cos.name/category/software/packages/" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/29.0.1547.66 Safari/537.36"
+...........
+```
+
+**期望输出数据**：状态码不为200的字段。
+
+##### 2.需求分析
+
+需要在Map阶段对输入的数据根据规则进行过滤清洗。
+
+##### 3.实现代码
+
+1. 编写`LogFilterMapper`类
+
+   ```java
+   public static class LogFilterMapper extends Mapper<LongWritable, Text,Text, NullWritable>{
+   
+       private Text k = new Text();
+       private BooleanWritable v = new BooleanWritable(false);
+   
+       @Override
+       protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+           if(!value.toString().contains(" 200 ")){
+               context.getCounter("logValid","false").increment(1);
+               context.write(value,NullWritable.get());
+           }else{
+               context.getCounter("logValid","true").increment(1);
+   
+           }
+       }
+   }
+   ```
+
+2. 编写`LogFilterDriver`类
+
+   ```java
+   public class LogFilterDriver {
+   
+        public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+                Job job = Job.getInstance(new Configuration());
+                job.setJarByClass(LogFilterDriver.class);
+   
+                job.setMapperClass(LogFilterMapper.class);
+   
+                job.setMapOutputKeyClass(Text.class);
+                job.setMapOutputValueClass(NullWritable.class);
+   
+                FileInputFormat.setInputPaths(job, new Path("f:/web.log"));
+                FileOutputFormat.setOutputPath(job, new Path("f:/output"));
+   
+                boolean result = job.waitForCompletion(true);
+                System.exit(result ? 0 : 1);
+            }
+   }
+   ```
+
+3. 查看运行日志
+
+   ```
+   ...
+   logValid
+   		false=2279
+   		true=12340
+   ....
+   ```
+
+   查看输入文件
+
+   ```
+   1.162.203.134 - - [18/Sep/2013:13:47:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [18/Sep/2013:15:39:29 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [18/Sep/2013:15:42:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [18/Sep/2013:15:42:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [18/Sep/2013:15:42:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [18/Sep/2013:15:42:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [18/Sep/2013:15:42:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [19/Sep/2013:01:57:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [19/Sep/2013:01:57:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [19/Sep/2013:01:57:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [19/Sep/2013:01:57:51 +0000] "-" 400 0 "-" "-"
+   1.202.186.37 - - [19/Sep/2013:01:57:51 +0000] "-" 400 0 "-" "-"
+   ```
+
+### MapReduce开发总结
+
+![](img/mapreduce总结1.png)
+
+![](img/mapreduce总结2.png)
+
+![](img/mapreduce总结3.png)
+
+![](img/mapreduce总结4.png)
+
+![](img/mapreduce总结5.png)

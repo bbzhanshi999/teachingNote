@@ -1098,7 +1098,7 @@ $ cat /opt/module/hadoop-3.2.1/fsout.xml
 
 在集群启动后，要求DataNode上报数据块信息，并间隔一段时间后再次上报。
 
-##### 查看edis
+##### 查看edits
 
 将edit文件以xml格式导出
 
