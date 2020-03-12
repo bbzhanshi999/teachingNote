@@ -1892,18 +1892,18 @@ job.setNumReduceTasks(6)：大于5，程序会正常运行，会产生空文件
 输入数据:
 
 ```bash
-1	13736230513	192.196.100.1	www.atguigu.com	2481	24681	200
+1	13736230513	192.196.100.1	www.neuedu.com	2481	24681	200
 2	13846544121	192.196.100.2			264	0	200
 3 	13956435636	192.196.100.3			132	1512	200
 4 	13966251146	192.168.100.1			240	0	404
-5 	18271575951	192.168.100.2	www.atguigu.com	1527	2106	200
-6 	84188413	192.168.100.3	www.atguigu.com	4116	1432	200
+5 	18271575951	192.168.100.2	www.neuedu.com	1527	2106	200
+6 	84188413	192.168.100.3	www.neuedu.com	4116	1432	200
 7 	13590439668	192.168.100.4			1116	954	200
 8 	15910133277	192.168.100.5	www.hao123.com	3156	2936	200
 9 	13729199489	192.168.100.6			240	0	200
 10 	13630577991	192.168.100.7	www.shouhu.com	6960	690	200
 11 	15043685818	192.168.100.8	www.baidu.com	3659	3538	200
-12 	15959002129	192.168.100.9	www.atguigu.com	1938	180	500
+12 	15959002129	192.168.100.9	www.neuedu.com	1938	180	500
 13 	13560439638	192.168.100.10			918	4938	200
 14 	13470253144	192.168.100.11			180	180	200
 15 	13682846555	192.168.100.12	www.qq.com	1938	2910	200
@@ -2732,7 +2732,7 @@ job.setNumReduceTasks(4);
 
 ##### 1.需求
 
-过滤输入的log日志，包含atguigu的网站输出到e:/neuedu.log，不包含atguigu的网站输出到e:/other.log。
+过滤输入的log日志，包含neuedu的网站输出到e:/neuedu.log，不包含neuedu的网站输出到e:/other.log。
 
 ```
 http://www.baidu.com
@@ -3492,3 +3492,967 @@ job.addCacheFile(new URI("file://e:/cache/pd.txt"));
 ![](img/mapreduce总结4.png)
 
 ![](img/mapreduce总结5.png)
+
+## MapReduce扩展案例
+
+### 1.倒排索引案例（多job串联）
+
+#### 需求
+
+有大量的文本（文档、网页），需要建立搜索索引
+
+##### 1.输入数据
+
+`a.txt`
+
+```
+neuedu pingping
+neuedu ss
+neuedu ss
+```
+
+`b.txt`
+
+```
+neuedu pingping
+neuedu pingping
+pingping ss
+```
+
+`c.txt`
+
+```
+neuedu ss
+neuedu pingping
+```
+
+##### 2.期望输出数据
+
+建立如下索引
+
+```
+neuedu	c.txt-->2	b.txt-->2	a.txt-->3
+pingping	c.txt-->1	b.txt-->3	a.txt-->1	
+ss	c.txt-->1	b.txt-->1	a.txt-->2	
+```
+
+#### 需求分析
+
+![](img/倒排索引需求分析.png)
+
+> 一次mapreduce解决不了的问题，我们来两次
+
+#### 代码实现
+
+##### 1.第一次数据处理
+
+###### 1.OneIndexMapper
+
+```java
+package com.neuedu.mapreduce.index;
+import java.io.IOException;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+
+public class OneIndexMapper extends Mapper<LongWritable, Text, Text, IntWritable>{
+	
+	String name;
+	Text k = new Text();
+	IntWritable v = new IntWritable();
+	
+	@Override
+	protected void setup(Context context)throws IOException, InterruptedException {
+
+		// 获取文件名称
+		FileSplit split = (FileSplit) context.getInputSplit();
+		
+		name = split.getPath().getName();
+	}
+	
+	@Override
+	protected void map(LongWritable key, Text value, Context context)	throws IOException, InterruptedException {
+
+		// 1 获取1行
+		String line = value.toString();
+		
+		// 2 切割
+		String[] fields = line.split(" ");
+		
+		for (String word : fields) {
+
+			// 3 拼接
+			k.set(word+"--"+name);
+			v.set(1);
+			
+			// 4 写出
+			context.write(k, v);
+		}
+	}
+}
+```
+
+###### 2.OneIndexReducer
+
+```java
+package com.neuedu.mapreduce.index;
+import java.io.IOException;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class OneIndexReducer extends Reducer<Text, IntWritable, Text, IntWritable>{
+	
+IntWritable v = new IntWritable();
+
+	@Override
+	protected void reduce(Text key, Iterable<IntWritable> values,Context context) throws IOException, InterruptedException {
+		
+		int sum = 0;
+
+		// 1 累加求和
+		for(IntWritable value: values){
+			sum +=value.get();
+		}
+		
+       v.set(sum);
+
+		// 2 写出
+		context.write(key, v);
+	}
+}
+```
+
+###### 3.OneIndexDriver
+
+```java
+package com.neuedu.mapreduce.index;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class OneIndexDriver {
+
+	public static void main(String[] args) throws Exception {
+
+       // 输入输出路径需要根据自己电脑上实际的输入输出路径设置
+		args = new String[] { "e:/input/inputoneindex", "e:/output5" };
+
+		Configuration conf = new Configuration();
+
+		Job job = Job.getInstance(conf);
+		job.setJarByClass(OneIndexDriver.class);
+
+		job.setMapperClass(OneIndexMapper.class);
+		job.setReducerClass(OneIndexReducer.class);
+
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(IntWritable.class);
+		
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(IntWritable.class);
+
+		FileInputFormat.setInputPaths(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+		job.waitForCompletion(true);
+	}
+}
+```
+
+###### 4.查看第一次输出结果
+
+```bash
+neuedu--a.txt	3
+neuedu--b.txt	2
+neuedu--c.txt	2
+pingping--a.txt	1
+pingping--b.txt	3
+pingping--c.txt	1
+ss--a.txt	2
+ss--b.txt	1
+ss--c.txt	1
+```
+
+##### 2.第二次处理
+
+###### 1.TwoIndexMapper
+
+```java
+package com.neuedu.mapreduce.index;
+import java.io.IOException;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class TwoIndexMapper extends Mapper<LongWritable, Text, Text, Text>{
+
+	Text k = new Text();
+	Text v = new Text();
+	
+	@Override
+	protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+		
+		// 1 获取1行数据
+		String line = value.toString();
+		
+		// 2用“--”切割
+		String[] fields = line.split("--");
+		
+		k.set(fields[0]);
+		v.set(fields[1]);
+		
+		// 3 输出数据
+		context.write(k, v);
+	}
+}
+```
+
+###### 2.TwoIndexReducer
+
+```java
+package com.neuedu.mapreduce.index;
+import java.io.IOException;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+public class TwoIndexReducer extends Reducer<Text, Text, Text, Text> {
+
+Text v = new Text();
+
+	@Override
+	protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+		// neuedu a.txt 3
+		// neuedu b.txt 2
+		// neuedu c.txt 2
+
+		// neuedu c.txt-->2 b.txt-->2 a.txt-->3
+
+		StringBuilder sb = new StringBuilder();
+
+        // 1 拼接
+		for (Text value : values) {
+			sb.append(value.toString().replace("\t", "-->") + "\t");
+		}
+
+v.set(sb.toString());
+
+		// 2 写出
+		context.write(key, v);
+	}
+}
+```
+
+###### 3.TwoIndexDriver
+
+```java
+package com.neuedu.mapreduce.index;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class TwoIndexDriver {
+
+	public static void main(String[] args) throws Exception {
+
+       // 输入输出路径需要根据自己电脑上实际的输入输出路径设置
+args = new String[] { "e:/input/inputtwoindex", "e:/output6" };
+
+		Configuration config = new Configuration();
+		Job job = Job.getInstance(config);
+
+job.setJarByClass(TwoIndexDriver.class);
+		job.setMapperClass(TwoIndexMapper.class);
+		job.setReducerClass(TwoIndexReducer.class);
+
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(Text.class);
+		
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
+
+		FileInputFormat.setInputPaths(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+		boolean result = job.waitForCompletion(true);
+System.exit(result?0:1);
+	}
+}
+```
+
+###### 4.第二次查看最终结
+
+```
+neuedu	c.txt-->2	b.txt-->2	a.txt-->3	
+pingping	c.txt-->1	b.txt-->3	a.txt-->1	
+ss	c.txt-->1	b.txt-->1	a.txt-->2	
+```
+
+### 2.TopN案例
+
+#### 需求
+
+输出手机用户中使用总流量在前十位的用户信息
+
+##### 1.输入数据
+
+```
+13470253144	180	180	360
+13509468723	7335	110349	117684
+13560439638	918	4938	5856
+13568436656	3597	25635	29232
+13590439668	1116	954	2070
+13630577991	6960	690	7650
+13682846555	1938	2910	4848
+13729199489	240	0	240
+13736230513	2481	24681	27162
+13768778790	120	120	240
+13846544121	264	0	264
+13956435636	132	1512	1644
+13966251146	240	0	240
+13975057813	11058	48243	59301
+13992314666	3008	3720	6728
+15043685818	3659	3538	7197
+15910133277	3156	2936	6092
+15959002129	1938	180	2118
+18271575951	1527	2106	3633
+18390173782	9531	2412	11943
+84188413	4116	1432	5548
+```
+
+##### 2.期望输出数据
+
+```
+13509468723	7335	110349	117684
+13975057813	11058	48243	59301
+13568436656	3597	25635	29232
+13736230513	2481	24681	27162
+18390173782	9531	2412	11943
+13630577991	6960	690	7650
+15043685818	3659	3538	7197
+13992314666	3008	3720	6728
+15910133277	3156	2936	6092
+13560439638	918	4938	5856
+```
+
+#### 需求分析
+
+![](img/topn需求分析.png)
+
+#### 实现代码
+
+##### 1.编写FlowBean类
+
+```java
+package com.neuedu.mr.top;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+
+import org.apache.hadoop.io.WritableComparable;
+
+public class FlowBean implements WritableComparable<FlowBean>{
+
+	private long upFlow;
+	private long downFlow;
+	private long sumFlow;
+	
+	
+	public FlowBean() {
+		super();
+	}
+
+	public FlowBean(long upFlow, long downFlow) {
+		super();
+		this.upFlow = upFlow;
+		this.downFlow = downFlow;
+	}
+
+	@Override
+	public void write(DataOutput out) throws IOException {
+		out.writeLong(upFlow);
+		out.writeLong(downFlow);
+		out.writeLong(sumFlow);
+	}
+
+	@Override
+	public void readFields(DataInput in) throws IOException {
+		upFlow = in.readLong();
+		downFlow = in.readLong();
+		sumFlow = in.readLong();
+	}
+
+	public long getUpFlow() {
+		return upFlow;
+	}
+
+	public void setUpFlow(long upFlow) {
+		this.upFlow = upFlow;
+	}
+
+	public long getDownFlow() {
+		return downFlow;
+	}
+
+	public void setDownFlow(long downFlow) {
+		this.downFlow = downFlow;
+	}
+
+	public long getSumFlow() {
+		return sumFlow;
+	}
+
+	public void setSumFlow(long sumFlow) {
+		this.sumFlow = sumFlow;
+	}
+
+	@Override
+	public String toString() {
+		return upFlow + "\t" + downFlow + "\t" + sumFlow;
+	}
+
+	public void set(long downFlow2, long upFlow2) {
+		downFlow = downFlow2;
+		upFlow = upFlow2;
+		sumFlow = downFlow2 + upFlow2;
+	}
+
+	@Override
+	public int compareTo(FlowBean bean) {
+		
+		int result;
+		
+		if (this.sumFlow > bean.getSumFlow()) {
+			result = -1;
+		}else if (this.sumFlow < bean.getSumFlow()) {
+			result = 1;
+		}else {
+			result = 0;
+		}
+		
+		return result;
+	}
+}
+```
+
+##### 2.编写TopNMapper类
+
+```java
+package com.neuedu.mr.top;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.TreeMap;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class TopNMapper extends Mapper<LongWritable, Text, FlowBean, Text>{
+	
+	// 定义一个TreeMap作为存储数据的容器（天然按key排序）
+	private TreeMap<FlowBean, Text> flowMap = new TreeMap<FlowBean, Text>();
+	private FlowBean kBean;
+	
+	@Override
+	protected void map(LongWritable key, Text value, Context context)	throws IOException, InterruptedException {
+		
+		kBean = new FlowBean();
+		Text v = new Text();
+		
+		// 1 获取一行
+		String line = value.toString();
+		
+		// 2 切割
+		String[] fields = line.split("\t");
+		
+		// 3 封装数据
+		String phoneNum = fields[0];
+		long upFlow = Long.parseLong(fields[1]);
+		long downFlow = Long.parseLong(fields[2]);
+		long sumFlow = Long.parseLong(fields[3]);
+		
+		kBean.setDownFlow(downFlow);
+		kBean.setUpFlow(upFlow);
+		kBean.setSumFlow(sumFlow);
+		
+		v.set(phoneNum);
+		
+		// 4 向TreeMap中添加数据
+		flowMap.put(kBean, v);
+		
+		// 5 限制TreeMap的数据量，超过10条就删除掉流量最小的一条数据
+		if (flowMap.size() > 10) {
+//		flowMap.remove(flowMap.firstKey());
+			flowMap.remove(flowMap.lastKey());		
+		}
+	}
+	
+	@Override
+	protected void cleanup(Context context) throws IOException, InterruptedException {
+		
+		// 6 遍历treeMap集合，输出数据
+		Iterator<FlowBean> bean = flowMap.keySet().iterator();
+
+		while (bean.hasNext()) {
+
+			FlowBean k = bean.next();
+
+			context.write(k, flowMap.get(k));
+		}
+	}
+}
+```
+
+##### 3.编写TopNReducer类
+
+```java
+package com.neuedu.mr.top;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.TreeMap;
+
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class TopNReducer extends Reducer<FlowBean, Text, Text, FlowBean> {
+
+	// 定义一个TreeMap作为存储数据的容器（天然按key排序）
+	TreeMap<FlowBean, Text> flowMap = new TreeMap<FlowBean, Text>();
+
+	@Override
+	protected void reduce(FlowBean key, Iterable<Text> values, Context context)throws IOException, InterruptedException {
+
+		for (Text value : values) {
+
+			 FlowBean bean = new FlowBean();
+			 bean.set(key.getDownFlow(), key.getUpFlow());
+
+			 // 1 向treeMap集合中添加数据
+			flowMap.put(bean, new Text(value));
+
+			// 2 限制TreeMap数据量，超过10条就删除掉流量最小的一条数据
+			if (flowMap.size() > 10) {
+				// flowMap.remove(flowMap.firstKey());
+flowMap.remove(flowMap.lastKey());
+			}
+		}
+	}
+
+	@Override
+	protected void cleanup(Reducer<FlowBean, Text, Text, FlowBean>.Context context) throws IOException, InterruptedException {
+
+		// 3 遍历集合，输出数据
+		Iterator<FlowBean> it = flowMap.keySet().iterator();
+
+		while (it.hasNext()) {
+
+			FlowBean v = it.next();
+
+			context.write(new Text(flowMap.get(v)), v);
+		}
+	}
+}
+```
+
+##### 4.编写TopNDriver类
+
+```java
+package com.neuedu.mr.top;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class TopNDriver {
+
+	public static void main(String[] args) throws Exception {
+		
+		args  = new String[]{"e:/output1","e:/output3"};
+		
+		// 1 获取配置信息，或者job对象实例
+		Configuration configuration = new Configuration();
+		Job job = Job.getInstance(configuration);
+
+		// 6 指定本程序的jar包所在的本地路径
+		job.setJarByClass(TopNDriver.class);
+
+		// 2 指定本业务job要使用的mapper/Reducer业务类
+		job.setMapperClass(TopNMapper.class);
+		job.setReducerClass(TopNReducer.class);
+
+		// 3 指定mapper输出数据的kv类型
+		job.setMapOutputKeyClass(FlowBean.class);
+		job.setMapOutputValueClass(Text.class);
+
+		// 4 指定最终输出的数据的kv类型
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(FlowBean.class);
+
+		// 5 指定job的输入原始文件所在目录
+		FileInputFormat.setInputPaths(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+		// 7 将job中配置的相关参数，以及job所用的java类所在的jar包， 提交给yarn去运行
+		boolean result = job.waitForCompletion(true);
+		System.exit(result ? 0 : 1);
+	}
+}
+```
+
+### 3.找博客共同好友案例
+
+#### 需求
+
+​	以下是博客的好友列表数据，冒号前是一个用户，冒号后是该用户的所有好友（数据中的好友关系是单向的）
+
+​	求出哪些人两两之间有共同好友，及他俩的共同好友都有谁？
+
+##### 1.数据输入
+
+```
+A:B,C,D,F,E,O
+B:A,C,E,K
+C:F,A,D,I
+D:A,E,F,L
+E:B,C,D,M,L
+F:A,B,C,D,E,O,M
+G:A,C,D,E,F
+H:A,C,D,E,O
+I:A,O
+J:B,O
+K:A,C,D
+L:D,E,F
+M:E,F,G
+O:A,H,I,J
+```
+
+##### 需求分析
+
+先求出A、B、C、….等是谁的好友
+
+**第一次输出结果**
+
+```
+A	I,K,C,B,G,F,H,O,D,
+B	A,F,J,E,
+C	A,E,B,H,F,G,K,
+D	G,C,K,A,L,F,E,H,
+E	G,M,L,H,A,F,B,D,
+F	L,M,D,C,G,A,
+G	M,
+H	O,
+I	O,C,
+J	O,
+K	B,
+L	D,E,
+M	E,F,
+O	A,H,I,J,F,
+```
+
+**第二次输出结果**
+
+```
+A-B	E C 
+A-C	D F 
+A-D	E F 
+A-E	D B C 
+A-F	O B C D E 
+A-G	F E C D 
+A-H	E C D O 
+A-I	O 
+A-J	O B 
+A-K	D C 
+A-L	F E D 
+A-M	E F 
+B-C	A 
+B-D	A E 
+B-E	C 
+B-F	E A C 
+B-G	C E A 
+B-H	A E C 
+B-I	A 
+B-K	C A 
+B-L	E 
+B-M	E 
+B-O	A 
+C-D	A F 
+C-E	D 
+C-F	D A 
+C-G	D F A 
+C-H	D A 
+C-I	A 
+C-K	A D 
+C-L	D F 
+C-M	F 
+C-O	I A 
+D-E	L 
+D-F	A E 
+D-G	E A F 
+D-H	A E 
+D-I	A 
+D-K	A 
+D-L	E F 
+D-M	F E 
+D-O	A 
+E-F	D M C B 
+E-G	C D 
+E-H	C D 
+E-J	B 
+E-K	C D 
+E-L	D 
+F-G	D C A E 
+F-H	A D O E C 
+F-I	O A 
+F-J	B O 
+F-K	D C A 
+F-L	E D 
+F-M	E 
+F-O	A 
+G-H	D C E A 
+G-I	A 
+G-K	D A C 
+G-L	D F E 
+G-M	E F 
+G-O	A 
+H-I	O A 
+H-J	O 
+H-K	A C D 
+H-L	D E 
+H-M	E 
+H-O	A 
+I-J	O 
+I-K	A 
+I-O	A 
+K-L	D 
+K-O	A 
+L-M	E F
+```
+
+#### 代码实现
+
+##### 1.第一次Mapper类
+
+```java
+package com.neuedu.mapreduce.friends;
+import java.io.IOException;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class OneShareFriendsMapper extends Mapper<LongWritable, Text, Text, Text>{
+	
+	@Override
+	protected void map(LongWritable key, Text value, Mapper<LongWritable, Text, Text, Text>.Context context)
+			throws IOException, InterruptedException {
+
+		// 1 获取一行 A:B,C,D,F,E,O
+		String line = value.toString();
+		
+		// 2 切割
+		String[] fields = line.split(":");
+		
+		// 3 获取person和好友
+		String person = fields[0];
+		String[] friends = fields[1].split(",");
+		
+		// 4写出去
+		for(String friend: friends){
+
+			// 输出 <好友，人>
+			context.write(new Text(friend), new Text(person));
+		}
+	}
+}
+```
+
+##### 2.第一次Reducer类
+
+```java
+package com.neuedu.mapreduce.friends;
+import java.io.IOException;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class OneShareFriendsReducer extends Reducer<Text, Text, Text, Text>{
+	
+	@Override
+	protected void reduce(Text key, Iterable<Text> values, Context context)throws IOException, InterruptedException {
+		
+		StringBuffer sb = new StringBuffer();
+
+		//1 拼接
+		for(Text person: values){
+			sb.append(person).append(",");
+		}
+		
+		//2 写出
+		context.write(key, new Text(sb.toString()));
+	}
+}
+```
+
+##### 3.第一次Driver类
+
+```java
+package com.neuedu.mapreduce.friends;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class OneShareFriendsDriver {
+
+	public static void main(String[] args) throws Exception {
+		
+// 1 获取job对象
+		Configuration configuration = new Configuration();
+		Job job = Job.getInstance(configuration);
+		
+		// 2 指定jar包运行的路径
+		job.setJarByClass(OneShareFriendsDriver.class);
+
+		// 3 指定map/reduce使用的类
+		job.setMapperClass(OneShareFriendsMapper.class);
+		job.setReducerClass(OneShareFriendsReducer.class);
+		
+		// 4 指定map输出的数据类型
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(Text.class);
+		
+		// 5 指定最终输出的数据类型
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
+		
+		// 6 指定job的输入原始所在目录
+		FileInputFormat.setInputPaths(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		
+		// 7 提交
+		boolean result = job.waitForCompletion(true);
+		
+		System.exit(result?0:1);
+	}
+}
+```
+
+##### 4.第二次Mapper类
+
+```java
+package com.neuedu.mapreduce.friends;
+import java.io.IOException;
+import java.util.Arrays;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class TwoShareFriendsMapper extends Mapper<LongWritable, Text, Text, Text>{
+	
+	@Override
+	protected void map(LongWritable key, Text value, Context context)
+			throws IOException, InterruptedException {
+
+		// A I,K,C,B,G,F,H,O,D,
+		// 友 人，人，人
+		String line = value.toString();
+		String[] friend_persons = line.split("\t");
+
+		String friend = friend_persons[0];
+		String[] persons = friend_persons[1].split(",");
+
+		Arrays.sort(persons);
+
+		for (int i = 0; i < persons.length - 1; i++) {
+			
+			for (int j = i + 1; j < persons.length; j++) {
+				// 发出 <人-人，好友> ，这样，相同的“人-人”对的所有好友就会到同1个reduce中去
+				context.write(new Text(persons[i] + "-" + persons[j]), new Text(friend));
+			}
+		}
+	}
+}
+```
+
+##### 5.第二次Reducer类
+
+```java
+package com.neuedu.mapreduce.friends;
+import java.io.IOException;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class TwoShareFriendsReducer extends Reducer<Text, Text, Text, Text>{
+	
+	@Override
+	protected void reduce(Text key, Iterable<Text> values, Context context)	throws IOException, InterruptedException {
+		
+		StringBuffer sb = new StringBuffer();
+
+		for (Text friend : values) {
+			sb.append(friend).append(" ");
+		}
+		
+		context.write(key, new Text(sb.toString()));
+	}
+}
+```
+
+##### 6.第二次Driver类
+
+```java
+package com.neuedu.mapreduce.friends;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class TwoShareFriendsDriver {
+
+	public static void main(String[] args) throws Exception {
+		
+		// 1 获取job对象
+		Configuration configuration = new Configuration();
+		Job job = Job.getInstance(configuration);
+		
+		// 2 指定jar包运行的路径
+		job.setJarByClass(TwoShareFriendsDriver.class);
+
+		// 3 指定map/reduce使用的类
+		job.setMapperClass(TwoShareFriendsMapper.class);
+		job.setReducerClass(TwoShareFriendsReducer.class);
+		
+		// 4 指定map输出的数据类型
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(Text.class);
+		
+		// 5 指定最终输出的数据类型
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
+		
+		// 6 指定job的输入原始所在目录
+		FileInputFormat.setInputPaths(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		
+		// 7 提交
+		boolean result = job.waitForCompletion(true);
+		System.exit(result?0:1);
+	}
+}
+```
+
