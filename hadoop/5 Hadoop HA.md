@@ -6,7 +6,7 @@
 
 Zookeeper是一个开源的分布式的，为分布式应用提供**协调**服务的Apache项目。
 
-![](F:\teachingNote\hadoop\img\zookeeper设计.png)
+![](img/zookeeper设计.png)
 
 > zookeeper最重要的核心是：
 >
@@ -15,7 +15,7 @@ Zookeeper是一个开源的分布式的，为分布式应用提供**协调**服�
 
 ### 特点
 
-![](F:\teachingNote\hadoop\img\zookeeper特点.png)
+![](img/zookeeper特点.png)
 
 1. Zookeeper：一个领导者（Leader），多个跟随者（Follower）组成的集群。
 2. 集群中只要有**半数以上**节点存活，Zookeeper集群就能正常服务。
@@ -28,7 +28,7 @@ Zookeeper是一个开源的分布式的，为分布式应用提供**协调**服�
 
 ​	ZooKeeper数据模型的结构与**Unix文件系统很类似**，整体上可以看作是一棵树，每个节点称做一个ZNode。每一个ZNode默认能够存储**1MB**的数据，每个ZNode都可以通过其路径唯一标识。
 
-![](F:\teachingNote\hadoop\img\zookeeper数据结构.png)
+![](img/zookeeper数据结构.png)
 
 **注意：**
 
@@ -45,11 +45,11 @@ zookeeper的`znode`与linux不同的是，**它不存在文件与文件夹的区
 ​	在分布式环境下，经常需要对应用/服务进行统一命名，便于识别。
 ​	例如：IP不容易记住，而域名容易记住。
 
-![](F:\teachingNote\hadoop\img\统一命名服务.png)
+![](img/统一命名服务.png)
 
 #### 统一配置管理
 
-![](F:\teachingNote\hadoop\img\统一配置管理.png)
+![](img/统一配置管理.png)
 
 1. 分布式环境下，配置文件同步非常常见。
    - 一般要求一个集群中，所有节点的配置信息是一致的，比如 Kafka 集群。
@@ -61,17 +61,17 @@ zookeeper的`znode`与linux不同的是，**它不存在文件与文件夹的区
 
 #### 统一集群管理
 
-![](F:\teachingNote\hadoop\img\统一集群管理.png)
+![](img/统一集群管理.png)
 
 #### 服务器节点动态上下线
 
-![](F:\teachingNote\hadoop\img\服务器动态上下线.png)
+![](img/服务器动态上下线.png)
 
 #### 软负载均衡
 
 ​	在Zookeeper中记录每台服务器的访问数，让访问数最少的服务器去处理最新的客户端请求
 
-![](F:\teachingNote\hadoop\img\软负载均衡.png)
+![](img/软负载均衡.png)
 
 ## Zookeeper安装
 
@@ -79,9 +79,9 @@ zookeeper的`znode`与linux不同的是，**它不存在文件与文件夹的区
 
 官网首页：https://zookeeper.apache.org/
 
-![](F:\teachingNote\hadoop\img\zookeeper下载.png)
+![](img/zookeeper下载.png)
 
-![](F:\teachingNote\hadoop\img\zookeeper下载2.png)
+![](img/zookeeper下载2.png)
 
 ### 本地模式安装部署
 
