@@ -531,3 +531,980 @@ dataLength = 4
 numChildren = 1
 ```
 
+### API应用
+
+#### 创建maven项目
+
+添加`pom.xml`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.example</groupId>
+    <artifactId>zkdemo</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>RELEASE</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.8.2</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.zookeeper/zookeeper -->
+        <dependency>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+            <version>3.6.0</version>
+        </dependency>
+
+    </dependencies>
+
+</project>
+```
+
+添加`log4j.properties`配置
+
+```properties
+log4j.rootLogger=INFO, stdout  
+log4j.appender.stdout=org.apache.log4j.ConsoleAppender  
+log4j.appender.stdout.layout=org.apache.log4j.PatternLayout  
+log4j.appender.stdout.layout.ConversionPattern=%d %p [%c] - %m%n  
+log4j.appender.logfile=org.apache.log4j.FileAppender  
+log4j.appender.logfile.File=target/spring.log  
+log4j.appender.logfile.layout=org.apache.log4j.PatternLayout  
+log4j.appender.logfile.layout.ConversionPattern=%d %p [%c] - %m%n 
+```
+
+#### 创建ZooKeeper客户端
+
+```java
+public class ZKClientTest {
+
+    private ZooKeeper zkClient;
+    private static final String ZK_CONN="hadoop152:2181,hadoop153:2181,hadoop154:2181";
+
+
+    @Before
+    public void init() throws IOException {
+        zkClient = new ZooKeeper(ZK_CONN,2000,e->{
+            System.out.println("default watcher:"+e);
+        });
+    }
+    
+    @After
+    public void destroy() throws InterruptedException {
+        zkClient.close();
+    }
+}
+```
+
+#### 创建子节点
+
+```java
+@Test
+public void create() throws KeeperException, InterruptedException {
+    String path = zkClient.create("/idea", "haha".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT, new Stat());
+    System.out.println(path);
+}
+```
+
+#### 查看子节点
+
+```java
+@Test
+public void ls() throws KeeperException, InterruptedException {
+    List<String> children = zkClient.getChildren("/", e-> System.out.println("ls watcher:"+e));
+    for(String child:children){
+        System.out.println("child:"+child);
+    }
+}
+```
+
+#### 设置节点数据
+
+```java
+@Test
+public void set() throws KeeperException, InterruptedException {
+    Stat stat = zkClient.setData("/idea", "哈哈哈哈".getBytes(StandardCharsets.UTF_8), 1);
+    System.out.println(stat.getDataLength());
+}
+```
+
+#### 获取节点数据
+
+```java
+@Test
+public void get() throws KeeperException, InterruptedException {
+    byte[] data = zkClient.getData("/idea", e -> {
+        System.out.println("get watcher:"+e);
+    }, new Stat());
+    System.out.println("data:"+new String(data));
+    while(true){
+
+    }
+}
+```
+
+#### 查看状态
+
+```java
+@Test
+public void stat() throws KeeperException, InterruptedException {
+    Stat stat = zkClient.exists("/idea", false);
+    System.out.println("version"+stat.getVersion());
+    System.out.println("num children"+stat.getNumChildren());
+    System.out.println("length"+stat.getDataLength());
+}
+```
+
+#### 删除节点
+
+```java
+@Test
+public void delete() throws KeeperException, InterruptedException {
+    Stat stat = zkClient.exists("/idea", false);
+    if(stat!=null)
+        zkClient.delete("/idea",stat.getVersion());
+}
+```
+
+#### 循环注册功能
+
+​	我们知道watcher对一个节点的监视只能一次，如果我们想一直保持对一个节点的监视，就需要通过循环的方式，代码如下：
+
+```java
+ @Test
+public void loopRegisterTest() throws KeeperException, InterruptedException {
+    loopRegister();
+
+    while (true) {
+
+    }
+}
+
+public void loopRegister() throws KeeperException, InterruptedException {
+    byte[] data = zkClient.getData("/idea", e -> {
+        try {
+            loopRegister();
+        } catch (KeeperException | InterruptedException ex) {
+            ex.printStackTrace();
+        }
+
+    }, new Stat());
+    System.out.println(new String(data));
+
+}
+```
+
+#### 监听服务器节点动态上下线案例
+
+##### 需求
+
+某分布式系统中，主节点可以有多台，可以动态上下线，任意一台客户端都能实时感知到主节点服务器的上下线。
+
+![](img/服务器动态上下线.png)
+
+##### 具体实现
+
+1.创建/servers节点
+
+```bash
+create /servers "servers"
+```
+
+2.服务端想zookeeper注册自己
+
+```java
+package com.neuedu.register;
+
+import org.apache.zookeeper.*;
+import org.apache.zookeeper.data.Stat;
+
+import java.io.IOException;
+
+public class DsServer {
+
+    private static String connectString = "hadoop152:2181,hadoop153:2181,hadoop154:2181";
+    private static int sessionTimeout = 2000;
+    private ZooKeeper zk = null;
+    private String parentNode = "/servers";
+
+    public void getConn() throws IOException {
+        zk = new ZooKeeper(connectString, sessionTimeout, e->{});
+    }
+
+    /**
+     * 注册服务器
+     * @param hostname
+     */
+    public void registerServer(String hostname) throws KeeperException, InterruptedException {
+
+
+        // 最关键的在于CreateMode.EPHEMERAL_SEQUENTIAL。因为我们创建的是临时序列节点，
+        // 当server宕机后，和zookeeper的会话自然断开，导致临时序列节点被删除，这时候客户端就能监听到服务的变化，
+        String path = zk.create(parentNode + "/server", hostname.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL_SEQUENTIAL);
+        System.out.println(hostname+"  active at "+ path);
+    }
+
+    public void business(String hostname) {
+        System.out.println(hostname+" is working ....");
+        while (true){
+
+        }
+    }
+
+    public static void main(String[] args) throws KeeperException, InterruptedException, IOException {
+        DsServer dsServer = new DsServer();
+        dsServer.getConn();
+        dsServer.registerServer(args[0]);
+        dsServer.business(args[0]);
+    }
+}
+
+```
+
+3.客户端获取服务信息
+
+```java
+package com.neuedu.register;
+
+import org.apache.zookeeper.ZooKeeper;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class DsClient {
+    private static String connectString = "hadoop152:2181,hadoop153:2181,hadoop154:2181";
+    private static int sessionTimeout = 2000;
+    private ZooKeeper zk = null;
+    private String parentNode = "/servers";
+
+    /**
+     * 循环监听服务列表的变化
+     * @throws IOException
+     */
+    public void getConnect() throws IOException {
+        zk = new ZooKeeper(connectString, sessionTimeout, event -> {
+            // 再次启动监听
+            try {
+                getServerList();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    // 获取服务器列表信息
+    public void getServerList() throws Exception {
+
+        // 1获取服务器子节点信息，并且对父节点进行监听
+        List<String> children = zk.getChildren(parentNode, true);
+
+        // 2存储服务器信息列表
+        ArrayList<String> servers = new ArrayList<>();
+
+        // 3遍历所有节点，获取节点中的主机名称信息
+        for (String child : children) {
+            byte[] data = zk.getData(parentNode + "/" + child, false, null);
+
+            servers.add(new String(data));
+        }
+
+        // 4打印服务器列表信息
+        System.out.println(servers);
+    }
+
+    // 业务功能
+    public void business() throws Exception{
+
+        System.out.println("client is working ...");
+        Thread.sleep(Long.MAX_VALUE);
+    }
+
+    public static void main(String[] args) throws Exception {
+
+        // 1获取zk连接
+        DsClient client = new DsClient();
+        client.getConnect();
+
+        // 2获取servers的子节点信息，从中获取服务器信息列表
+        client.getServerList();
+
+        // 3业务进程启动
+        client.business();
+    }
+}
+```
+
+##### 测试
+
+启动两个`DsServer`，观察`DsClient`的变化。
+
+```bash
+client is working ...
+[server200]
+[server201, server200]
+[server201]
+```
+
+## Zookeeper内部原理
+
+### 节点类型
+
+#### 按照节点生命周期划分
+
+持久（Persistent）：客户端和服务器端断开连接后，创建的节点不删除
+
+短暂（Ephemeral）：客户端和服务器端断开连接后，创建的节点自己删除
+
+#### 按照是否有序划分
+
+​	在分布式系统中，顺序号可以被用于为所有的事件进行全局排序，这样客户端可以通过顺序号推断事件的顺序。
+
+创建znode时设置顺序标识，znode名称后会附加一个值，顺序号是一个单调递增的计数器，由父节点维护
+
+#### 具体类型
+
+![](img/zookeeper节点类型.png)
+
+
+
+##### 持久化目录节点
+
+客户端与Zookeeper断开连接后，该节点依旧存在
+
+##### 持久化顺序编号目录节点
+
+客户端与Zookeeper断开连接后，该节点依旧存在，只是Zookeeper给该节点名称进行顺序编号
+
+##### 临时目录节点
+
+客户端与Zookeeper断开连接后，该节点被删除
+
+##### 临时顺序编号目录节点
+
+客户端与Zookeeper断开连接后，该节点被删除，只是Zookeeper给该节点名称进行顺序编号。
+
+### Stat结构体
+
+1.**czxid**-创建节点的事务zxid
+
+> 每次修改ZooKeeper状态都会收到一个zxid形式的时间戳，也就是ZooKeeper事务ID。
+>
+> 事务ID是ZooKeeper中所有修改总的次序。每个修改都有唯一的zxid，如果zxid1小于zxid2，那么zxid1在zxid2之前发生。
+
+2.**ctime** - znode被创建的毫秒数(从1970年开始)
+
+3.**mzxid** - znode最后更新的事务zxid
+
+4.**mtime** - znode最后修改的毫秒数(从1970年开始)
+
+5.**pZxid**-znode最后更新的子节点zxid
+
+6.**cversion** - znode子节点变化号，znode子节点修改次数
+
+7.**dataversion** - znode数据变化号
+
+8.**aclVersion** - znode访问控制列表的变化号
+
+9.**ephemeralOwner**- 如果是临时节点，这个是znode拥有者的session id。如果不是临时节点则是0。
+
+10.**dataLength**- znode的数据长度
+
+11.**numChildren** - znode子节点数量
+
+### 监听器原理（重点）
+
+​	zookeeper是如何通知客户端数据变化的？
+
+![](img/监听器原理.png)
+
+**监听原理详解**：
+
+1. 首先要有一个`main()`线程
+
+2. 在main线程中创建Zookeeper客户端，这时就会创建两个线程，一个负责网络连接通信（`connect`），一个负责监听（`listener`）。
+
+   >debug `new zookeeper`构造函数，可以发现如下代码
+   >
+   >```java
+   >this.cnxn = this.createConnection(connectStringParser.getChrootPath(), this.hostProvider, sessionTimeout, this, this.watchManager, this.getClientCnxnSocket(), canBeReadOnly);
+   >this.cnxn.start();//线程启动
+   >```
+   >
+   >```java
+   >//ClientCnxn构造函数
+   >.....
+   >//设置事件监听线程，和发送连接线程
+   >this.sendThread = new ClientCnxn.SendThread(clientCnxnSocket);
+   >this.eventThread = new ClientCnxn.EventThread();
+   >```
+   >
+   >```java
+   >//线程启动
+   >public void start() {
+   >    this.sendThread.start();
+   >    this.eventThread.start();
+   >}
+   >```
+
+3. 通过`connect`线程将注册的监听事件发送给Zookeeper。
+
+4. 在Zookeeper的注册监听器列表中将注册的监听事件添加到列表中。
+
+5. Zookeeper监听到有数据或路径变化，就会将这个消息发送给`listener`线程。
+
+6. `listener`线程内部调用了`process()`方法。
+
+### Zab协议(重点)
+
+Zab协议 的全称是 **Zookeeper Atomic Broadcast** （Zookeeper原子广播）。
+
+1. Zab协议是为分布式协调服务Zookeeper专门设计的一种 **支持崩溃恢复** 的 **原子广播协议** ，是Zookeeper保证数据一致性的核心算法。Zab借鉴了Paxos算法，但又不像Paxos那样，是一种通用的分布式一致性算法。**它是特别为Zookeeper设计的支持崩溃恢复的原子广播协议**。
+
+2. 在Zookeeper中主要依赖Zab协议来实现数据一致性，基于该协议，zk实现了一种主备模型（即Leader和Follower模型）的系统架构来保证集群中各个副本之间数据的一致性。
+    这里的主备系统架构模型，就是指只有一台客户端（Leader）负责处理外部的写事务请求，然后Leader客户端将数据同步到其他Follower节点。
+
+**总结Zab协议干了哪两件事：**
+
+1. 崩溃恢复：没有leader选leader。
+2. 原子广播：有了leader，怎么干活，如何保证所有节点写数据的同步。
+
+#### 选举机制
+
+Zab协议是如何来选leader的呢？
+
+1. **半数机制：集群中半数以上机器存活，集群可用。所以Zookeeper适合安装奇数台服务器。**
+2. Zookeeper虽然在配置文件中并没有指定Master和Slave。但是，Zookeeper工作时，是有一个节点为Leader，其他则为Follower，Leader是通过内部的选举机制临时产生的。
+
+##### 案例过程分析
+
+​	假设有五台服务器组成的Zookeeper集群，它们的id从1-5，同时它们都是最新启动的，也就是没有历史数据，在存放数据量这一点上，都是一样的。假设这些服务器依序启动，来看看会发生什么
+
+![](img/选举机制案例.png)
+
+> zookeeper节点有四个状态：
+>
+> 1. Looking：没有leader的状态，找leader
+> 2. Leading：自己就是leader
+> 3. Following：自己是follower
+> 4. oberserver：在大集群中存在的状态,相当于屁民（了解即可）
+
+1. 服务器1启动，发起一次选举。服务器1投自己一票。此时服务器1票数一票，不够半数以上（3票），选举无法完成，服务器1状态保持为LOOKING；
+2. 服务器2启动，再发起一次选举。服务器1和2分别投自己一票并交换选票信息：此时服务器1发现服务器2的ID比自己目前投票推举的（服务器1）大，更改选票为推举服务器2。此时服务器1票数0票，服务器2票数2票，没有半数以上结果，选举无法完成，服务器1，2状态保持LOOKING
+3. 服务器3启动，发起一次选举。此时服务器1和2都会更改选票为服务器3。此次投票结果：服务器1为0票，服务器2为0票，服务器3为3票。此时服务器3的票数已经超过半数，服务器3当选Leader。服务器1，2更改状态为FOLLOWING，服务器3更改状态为LEADING；
+4. 服务器4启动，发起一次选举。此时服务器1，2，3已经不是LOOKING状态，不会更改选票信息。交换选票信息结果：服务器3为3票，服务器4为1票。此时服务器4服从多数，更改选票信息为服务器3，并更改状态为FOLLOWING；
+5. 服务器5启动，同4一样当小弟。
+
+##### 如何比较谁更适合当leader
+
+​	**首先比较谁的zxid更大**，谁的zxid更大，代表数据是最新的，所以先选数据最新的，假设zxid一致，或者是一个新集群，此时**再比较谁的myid更大**，谁大谁就是leader
+
+#### 写数据流程
+
+![](img/zookeeper写数据流程.png)
+
+##### 写投票机制
+
+​	leader发起投票广播后，所有节点都需要判断目前**自身的zxid是否小于写请求的zxid**，如果小于就同意，**并且会将这条请求放入自己节点的待写队列。**
+
+##### 异常的情况分析
+
+在进行写投票时，有可能会出现某个follower不同意写的情况，为什么会出现？
+
+原因是由于，zookeeper集群内部可能出现了网络延时，比如3台机器的zxid都是9，此时有一个10的写请求发起，leader通知了所有集群，但是由于网络延时，机器3暂时没有收到投票广播，而其他集群都收到并且同意，由于超过半数，leader进行了写广播，其他机器都完成了写操作，并且zxid升级为10。
+
+​	此时，新的一条写请求11发起，leader再次广播投票，此时所有机器收到了广播请求，机器判断11>9,也同意了，所有机器都完成了写操作，zxid更新为11.
+
+​	这时候，机器3才收到10的投票请求（太晚了），经过zxid判断，10<11，机器3投了不同意票，同时它知道自己的数据出现问题了，怎么办？
+
+**注意：**当节点需要投不同意票的时候，也就意味着节点的数据可能不同步与集群了，**这时候它会果断选择自杀，自杀之后重启，向leader发起同步数据的请求**。
+
+## Hadoop HA概述
+
+**所谓HA（High Available）**，即高可用（7*24小时不中断服务）。
+
+实现高可用最关键的策略是消除单点故障。HA严格来说应该分成各个组件的HA机制：HDFS的HA和YARN的HA。
+
+Hadoop2.0之前，在HDFS集群中NameNode存在单点故障（SPOF）。
+
+NameNode主要在以下两个方面影响HDFS集群
+
+​	NameNode机器发生意外，如宕机，集群将无法使用，直到管理员重启
+
+​	NameNode机器需要升级，包括软件、硬件升级，此时集群也将无法使用
+
+HDFS HA功能通过配置Active/Standby两个NameNodes实现在集群中对NameNode的热备来解决上述问题。如果出现故障，如机器崩溃或机器需要升级维护，这时可通过此种方式将NameNode很快的切换到另外一台机器。
+
+## HDFS-HA工作机制
+
+​	通过双`NameNode`消除单点故障。其中一个`NameNode`的状态为激活Active，另一个为`StandBy`。正常工作情况下，处理客户端写请求的**只有状态为Active的`NameNode`**
+
+### HDFS-HA工作要点
+
+#### 1.元数据管理方式改变
+
+1. 内存中各自保存一份元数据Fsimage
+
+2. Edits日志**只有Active状态的NameNode节点可以做写操作**
+
+3. 两个`NameNode`都可以读取Edits，**因此`SecondaryNameNode`不再需要，它的工作转移给状态为StandBy的`NameNode`**
+
+4. **共享的Edits放在一个共享存储中管理**（QJM和NFS两个主流实现）,NFS不太稳定，**因此实际开发中一般选用QJM**
+
+   > QJM全称是Quorum Journal Manager, 由JournalNode（JN）组成，一般是奇数点结点组成。每个JournalNode对外有一个简易的RPC接口，以供NameNode读写EditLog到JN本地磁盘。当写EditLog时，NameNode会同时向所有JournalNode并行写文件，只要有N/2+1结点写成功则认为此次写操作成功，遵循Paxos协议。
+   >
+   > 参考：https://blog.csdn.net/breakout_alex/article/details/88171114
+
+#### 2.状态管理功能模块
+
+思考问题：假设Active状态的NameNode挂了，Standby就立即上位吗？
+
+**答案是不能**，因为你怎么知道Active真挂了？也许就是Active和StandBy之间断连了而已，而Active还在正常工作呢，如果此时Standby上位，就会出现脑裂（Brain Split）
+
+**Brain Split比集群宕机更可怕**，因为这种现象会造成数据混乱，此时两个NameNode同时接受客户端的写请求，同时产生edits文件，导致元数据不唯一，那datanode中的数据岂不是乱套了，当客户端发起读请求时，你读的到底是什么数据？
+
+**因此，我们需要一个第三方管理工具来验证NameNode是否真的挂了，这个第三方就是zookeeper**
+
+​	Hadoop实现了一个`zk failover Controller`，常驻在每一个`namenode`所在的节点，每一个`zkfailover`负责t监控自己所在NameNode节点并且将状态上报Zookeeper，利用zookeeper进行状态标识，当需要进行状态切换时，由zkfailover来负责切换，切换时需要防止brain split现象的发生。
+
+#### 3 通讯保障
+
+必须保证两个NameNode之间能够ssh无密码登录
+
+#### 4.隔离（Fence）
+
+即同一时刻仅仅有一个NameNode对外提供服务
+
+### HDFS-HA自动故障转移工作机制
+
+![](img/hdfs故障转移机制.png)
+
+#### 1.故障检测
+
+​	集群中的每个NameNode在ZooKeeper中维护了一个持久会话，如果机器崩溃，ZooKeeper中的会话将终止，ZooKeeper通知另一个NameNode需要触发故障转移。
+
+> 这里实际上利用了zookeeper的临时节点功能，一旦NameNode崩溃，zkfc就会断开与zookeeper的会话，自然其临时节点就没了，此时其他的NameNode就会监控到zookeeper节点的变化，从而启动故障转移。
+
+#### 2.现役NameNode选择
+
+​	ZooKeeper提供了一个简单的机制用于唯一的选择一个节点为active状态。如果目前现役NameNode崩溃，另一个节点可能从ZooKeeper获得特殊的排外锁以表明它应该成为现役NameNode。
+
+​	ZKFC是自动故障转移中的另一个新组件，是ZooKeeper的客户端，也监视和管理NameNode的状态。每个运行NameNode的主机也运行了一个ZKFC进程，ZKFC负责：
+
+1. **健康监测：**ZKFC使用一个健康检查命令定期地ping与之在相同主机的NameNode，只要该NameNode及时地回复健康状态，ZKFC认为该节点是健康的。如果该节点崩溃，冻结或进入不健康状态，健康监测器标识该节点为非健康的。
+2. **ZooKeeper会话管理：**当本地NameNode是健康的，ZKFC保持一个在ZooKeeper中打开的会话。如果本地NameNode处于active状态，ZKFC也保持一个特殊的znode锁，该锁使用了ZooKeeper对短暂节点的支持，如果会话终止，锁节点将自动删除。
+3. **基于ZooKeeper的选择：**如果本地NameNode是健康的，且ZKFC发现没有其它的节点当前持有znode锁，它将为自己获取该锁。如果成功，则它已经赢得了选择，并负责运行故障转移进程以使它的本地NameNode为Active。故障转移进程首先如果必要保护之前的现役NameNode，然后本地NameNode转换为Active状态。
+
+## HDFS-HA集群配置
+
+### 环境准备
+
+1. 修改ip
+2. 修改主机名及主机名和IP地址的映射
+3. 关闭防火墙
+4. ssh免密登录
+5. 安装JDK，配置环境变量等
+
+### 规划集群
+
+| hadoop152             | hadoop153             | hadoop154   |
+| --------------------- | --------------------- | ----------- |
+| NameNode              | NameNode              |             |
+| zk faliure controller | zk faliure controller |             |
+| JournalNode           | JournalNode           | JournalNode |
+| DataNode              | DataNode              | DataNode    |
+| Zookeeper             | Zookeeper             | Zookeeper   |
+|                       | ResourceManager       |             |
+| NodeManager           | NodeManager           | NodeManager |
+
+### 配置ZooKeeper集群
+
+略，见zookeeper实战章节。
+
+### 配置HDFS-HA集群
+
+1. 在`/opt/module`下创建ha文件夹
+
+   ```bash
+   $ mdkir ha
+   ```
+
+2. 解压`hadoop-2.7.7-tar.gz`至ha
+
+   ```bash
+   $ tar -xzvf hadoop-2.7.7-tar.gz -C /opt/module/ha/
+   ```
+
+3. 配置`hadoop-env.sh`
+
+   ```bash
+   export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
+   ```
+
+4. 配置`yarn-env.sh`
+
+   ```bash
+   export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
+   ```
+
+5. 配置`mapred-env.sh`
+
+   ```bash
+   export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-0.el7_7.x86_64
+   ```
+
+6. 配置`slaves（workers）`文件
+
+   ```bash
+   hadoop152
+   hadoop153
+   hadoop154
+   ```
+
+7. 配置`core-site.xml`
+
+   ```xml
+   <configuration>
+   <!-- 把两个NameNode）的地址组装成一个集群mycluster -->
+   		<property>
+   			<name>fs.defaultFS</name>
+           	<value>hdfs://mycluster</value>
+   		</property>
+   
+   		<!-- 指定hadoop运行时产生文件的存储目录 -->
+   		<property>
+   			<name>hadoop.tmp.dir</name>
+   			<value>/opt/module/ha/hadoop-2.7.7/data/tmp</value>
+   		</property>
+   </configuration>
+   ```
+
+8. 配置`hdfs-site.xml`
+
+   ```xml
+   <configuration>
+   	<!-- 完全分布式集群名称 -->
+   	<property>
+   		<name>dfs.nameservices</name>
+   		<value>mycluster</value>
+   	</property>
+   
+   	<!-- 集群中NameNode节点都有哪些 -->
+   	<property>
+   		<name>dfs.ha.namenodes.mycluster</name>
+   		<value>nn1,nn2</value>
+   	</property>
+   
+   	<!-- nn1的RPC通信地址 -->
+   	<property>
+   		<name>dfs.namenode.rpc-address.mycluster.nn1</name>
+   		<value>hadoop152:9000</value>
+   	</property>
+   
+   	<!-- nn2的RPC通信地址 -->
+   	<property>
+   		<name>dfs.namenode.rpc-address.mycluster.nn2</name>
+   		<value>hadoop153:9000</value>
+   	</property>
+   
+   	<!-- nn1的http通信地址 -->
+   	<property>
+   		<name>dfs.namenode.http-address.mycluster.nn1</name>
+   		<value>hadoop152:50070</value>
+   	</property>
+   
+   	<!-- nn2的http通信地址 -->
+   	<property>
+   		<name>dfs.namenode.http-address.mycluster.nn2</name>
+   		<value>hadoop153:50070</value>
+   	</property>
+   
+   	<!-- 指定NameNode元数据在JournalNode上的存放位置 -->
+   	<property>
+   		<name>dfs.namenode.shared.edits.dir</name>
+   	<value>qjournal://hadoop152:8485;hadoop153:8485;hadoop154:8485/mycluster</value>
+   	</property>
+   
+   	<!-- 配置隔离机制，即同一时刻只能有一台服务器对外响应 -->
+   	<property>
+   		<name>dfs.ha.fencing.methods</name>
+   		<value>sshfence</value>
+   	</property>
+   
+   	<!-- 使用隔离机制时需要ssh无秘钥登录-->
+   	<property>
+   		<name>dfs.ha.fencing.ssh.private-key-files</name>
+   		<value>/home/hadoop/.ssh/id_rsa</value>
+   	</property>
+   
+   	<!-- 声明journalnode服务器存储目录-->
+   	<property>
+   		<name>dfs.journalnode.edits.dir</name>
+   		<value>/opt/module/ha/hadoop-2.7.7/data/jn</value>
+   	</property>
+   
+   	<!-- 关闭权限检查-->
+   	<property>
+   		<name>dfs.permissions.enable</name>
+   		<value>false</value>
+   	</property>
+   
+   	<!-- 访问代理类：client，mycluster，active配置失败自动切换实现方式-->
+   	<property>
+     		<name>dfs.client.failover.proxy.provider.mycluster</name>
+   			<value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+   	</property>
+   </configuration>
+   ```
+
+9. 分发至各个节点
+
+   ```bash
+   $ xsync /opt/module/ha/ 152-154
+   ```
+
+### 启动HDFS-HA集群
+
+1. 在各个`JournalNode`节点上，输入以下命令启动`journalnode`服务
+
+   ```bash
+   sbin/hadoop-daemon.sh start journalnode
+   ```
+
+2. 在`nn1`上，进行`namenode`格式化，并启动
+
+   ```bash
+   $ bin/hdfs namenode -format
+   $ sbin/hadoop-daemon.sh start namenode
+   ```
+
+3. 在`nn2`上，同步`nn1`的元数据信息
+
+   ```bash
+   $ bin/hdfs namenode -bootstrapStandby
+   ```
+
+4. 启动`nn2`
+
+   ```bash
+   $ sbin/hadoop-daemon.sh start namenode
+   ```
+
+5. 访问`nn1`提供的web服务
+
+   ![](img/访问那你.png)
+
+6. 在`nn1`上，启动所有`datanode`
+
+   ```bash
+   $ sbin/hadoop-daemons.sh start datanode
+   ```
+
+7. 手动设置`nn1` Active
+
+   ```bash
+   $ bin/hdfs haadmin -transitionToActive nn1
+   ```
+
+8. 查看是否Active
+
+   ```bash
+   $ bin/hdfs haadmin -getServiceState nn1
+   ```
+
+### 配置HDFS-HA自动故障转移
+
+1. 在`hdfs-site.xml`中配置启动自动故障转移
+
+   ```xml
+   <property>
+   	<name>dfs.ha.automatic-failover.enabled</name>
+   	<value>true</value>
+   </property>
+   ```
+
+2. 在`core-site.xml`文件中配置zookeeper集群地址
+
+   ```xml
+   <property>
+   	<name>ha.zookeeper.quorum</name>
+   	<value>hadoop152:2181,hadoop153:2181,hadoop154:2181</value>
+   </property>
+   ```
+
+3. 将配置文件分发至集群
+
+   ```bash
+   $ xsync etc/ 152-154
+   ```
+
+4. 关闭所有hdfs服务
+
+   ```bash
+   $ sbin/stop-dfs.sh
+   ```
+
+5. 启动Zookeeper集群
+
+   ```bash
+   $ bin/zkServer.sh start
+   ```
+
+6. 初始化HA在Zookeeper中状态,会在zookeeper中添加父节点`/hadoop-ha/mycluster`
+
+   ```bash
+   $ bin/hdfs zkfc -formatZK
+   ```
+
+7. 启动HDFS服务
+
+   ```bash
+   $ sbin/start-dfs.sh
+   ```
+
+> 这里的active namenode将有zookeeper决定，谁先抢先在zookeeper上注册到锁节点，谁就是active
+>
+> ```bash
+> [zk: localhost:2181(CONNECTED) 6] get  -s /hadoop-ha/mycluster/ActiveStandbyElectorLock
+> -----------------------------
+> 	myclusternn2	hadoop153 �F(�> // hadoop153抢先注册至zookeeper
+> cZxid = 0x200000078
+> ctime = Sun Mar 15 07:53:38 CST 2020
+> mZxid = 0x200000078
+> mtime = Sun Mar 15 07:53:38 CST 2020
+> pZxid = 0x200000078
+> cversion = 0
+> dataVersion = 0
+> aclVersion = 0
+> ephemeralOwner = 0x30000072fef0008  // 这是个临时节点，再次说明hadoop ha利用了临时节点规则
+> dataLength = 33
+> numChildren = 0
+> 
+> ```
+
+##### 验证自动故障转移
+
+1. 将Active NameNode进程kill
+
+   ```bash
+   $ kill -9 namenode的进程id
+   ```
+
+   访问web服务发现崩溃恢复成功，hadoop152变成了active，查看zkfc日志
+
+   ```bash
+   2020-03-15 07:53:28,802 INFO org.apache.hadoop.ha.ZKFailoverController: ZK Election indicated that NameNode at hadoop152/192.168.40.152:9000 should become standby
+   2020-03-15 07:53:28,810 INFO org.apache.hadoop.ha.ZKFailoverController: Successfully transitioned NameNode at hadoop152/192.168.40.152:9000 to standby state
+   2020-03-15 07:59:34,490 INFO org.apache.hadoop.ha.ActiveStandbyElector: Checking for any old active which needs to be fenced...
+   2020-03-15 07:59:34,495 INFO org.apache.hadoop.ha.ActiveStandbyElector: Old node exists: 0a096d79636c757374657212036e6e321a096861646f6f7031353320a84628d33e
+   2020-03-15 07:59:34,496 INFO org.apache.hadoop.ha.ZKFailoverController: Should fence: NameNode at hadoop153/192.168.40.153:9000
+   2020-03-15 07:59:35,499 INFO org.apache.hadoop.ipc.Client: Retrying connect to server: hadoop153/192.168.40.153:9000. Already tried 0 time(s); retry policy is RetryUpToMaximumCountWithFixedSleep(maxRetries=1, sleepTime=1000 MILLISECONDS)
+   2020-03-15 07:59:35,501 WARN org.apache.hadoop.ha.FailoverController: Unable to gracefully make NameNode at hadoop153/192.168.40.153:9000 standby (unable to connect)
+   ........
+   2020-03-15 07:59:35,711 INFO org.apache.hadoop.ha.SshFenceByTcpPort: Connected to hadoop153
+   2020-03-15 07:59:35,711 INFO org.apache.hadoop.ha.SshFenceByTcpPort: Looking for process running on port 9000
+   2020-03-15 07:59:35,886 INFO org.apache.hadoop.ha.SshFenceByTcpPort: Indeterminate response from trying to kill service. Verifying whether it is running using nc...
+   2020-03-15 07:59:35,896 WARN org.apache.hadoop.ha.SshFenceByTcpPort: nc -z hadoop153 9000 via ssh: bash: nc: command not found
+   2020-03-15 07:59:35,897 INFO org.apache.hadoop.ha.SshFenceByTcpPort: Verified that the service is down.
+   2020-03-15 07:59:35,897 INFO org.apache.hadoop.ha.SshFenceByTcpPort.jsch: Disconnecting from hadoop153 port 22
+   2020-03-15 07:59:35,898 INFO org.apache.hadoop.ha.NodeFencer: ====== Fencing successful by method org.apache.hadoop.ha.SshFenceByTcpPort(null) ======
+   2020-03-15 07:59:35,898 INFO org.apache.hadoop.ha.ActiveStandbyElector: Writing znode /hadoop-ha/mycluster/ActiveBreadCrumb to indicate that the local node is the most recent active...
+   2020-03-15 07:59:35,898 INFO org.apache.hadoop.ha.SshFenceByTcpPort.jsch: Caught an exception, leaving main loop due to Socket closed
+   2020-03-15 07:59:35,905 INFO org.apache.hadoop.ha.ZKFailoverController: Trying to make NameNode at hadoop152/192.168.40.152:9000 active...
+   2020-03-15 07:59:36,124 INFO org.apache.hadoop.ha.ZKFailoverController: Successfully transitioned NameNode at hadoop152/192.168.40.152:9000 to active state
+   ```
+
+   通过日志，我们发现，hadoop152上的nn1检测到zookeeper中锁节点的消失，开始自动完成了以下工作：
+
+   1. nn1 的zkfc检测到old active挂掉
+   2. nn1尝试通过和谐的方式（访问nn2的9000端口）通知nn2将自己降级为standby
+   3. 由于nn2进程挂掉了，所以和谐方式失败
+   4. nn1启动sshfence 通过远程`kill -9`开始杀nn2
+   5. 由于已经杀了，所以nn1发现没有进程，开始尝试向zookeeper注册锁节点。
+   6. 注册成功自动转为active
+
+2. 将Active NameNode ZKFC杀掉
+
+   ```bash
+   $ kill -9 ZKFC进程id
+   ```
+
+   查看hadoop153上的zkfc日志
+
+   ```bash
+   2020-03-15 08:12:29,315 INFO org.apache.hadoop.ha.ActiveStandbyElector: Session connected.
+   2020-03-15 08:12:29,319 INFO org.apache.hadoop.ha.ZKFailoverController: ZK Election indicated that NameNode at hadoop153/192.168.40.153:9000 should become standby
+   2020-03-15 08:12:29,325 INFO org.apache.hadoop.ha.ZKFailoverController: Successfully transitioned NameNode at hadoop153/192.168.40.153:9000 to standby state
+   2020-03-15 08:13:23,607 INFO org.apache.hadoop.ha.ActiveStandbyElector: Checking for any old active which needs to be fenced...
+   2020-03-15 08:13:23,611 INFO org.apache.hadoop.ha.ActiveStandbyElector: Old node exists: 0a096d79636c757374657212036e6e311a096861646f6f7031353220a84628d33e
+   2020-03-15 08:13:23,612 INFO org.apache.hadoop.ha.ZKFailoverController: Should fence: NameNode at hadoop152/192.168.40.152:9000
+   2020-03-15 08:13:23,642 INFO org.apache.hadoop.ha.ZKFailoverController: Successfully transitioned NameNode at hadoop152/192.168.40.152:9000 to standby state without fencing
+   2020-03-15 08:13:23,642 INFO org.apache.hadoop.ha.ActiveStandbyElector: Writing znode /hadoop-ha/mycluster/ActiveBreadCrumb to indicate that the local node is the most recent active...
+   2020-03-15 08:13:23,649 INFO org.apache.hadoop.ha.ZKFailoverController: Trying to make NameNode at hadoop153/192.168.40.153:9000 active...
+   2020-03-15 08:13:23,838 INFO org.apache.hadoop.ha.ZKFailoverController: Successfully transitioned NameNode at hadoop153/192.168.40.153:9000 to active state
+   ```
+
+   1. nn2检测到nn1在zookeeper上的锁节点消失
+
+   2. 发起隔离nn1的动作
+
+   3. 首先通过访问nn1的9000端口，和谐的通知nn1自己降级成standby
+
+   4. 由于nn1存活，所以和谐成功。
+
+   5. nn2向zookeeper发起锁节点创建请求
+
+      ```bash
+      [zk: localhost:2181(CONNECTED) 10] get  -s /hadoop-ha/mycluster/ActiveStandbyElectorLock
+      
+      	myclusternn2	hadoop153 �F(�>
+      
+      ```
+
+   6. 创建成功，升级为active
+
+3. 将Active NameNode机器断开网络
+
+   ```bash
+   $ systemctl stop network.service
+   ```
+
+   这种情况下，standby节点不会转换成active
+
+   查看nn1 的zkfc日志
+
+   ```bash
+   2020-03-15 08:25:00,713 INFO org.apache.hadoop.ha.ZKFailoverController: Should fence: NameNode at hadoop153/192.168.40.153:9000
+   2020-03-15 08:25:03,700 INFO org.apache.hadoop.ipc.Client: Retrying connect to server: hadoop153/192.168.40.153:9000. Already tried 0 time(s); retry policy is RetryUpToMaximumCountWithFixedSleep(maxRetries=1, sleepTime=1000 MILLISECONDS)
+   2020-03-15 08:25:05,705 WARN org.apache.hadoop.ha.FailoverController: Unable to gracefully make NameNode at hadoop153/192.168.40.153:9000 standby (unable to connect)
+   java.net.NoRouteToHostException: No Route to Host from  hadoop152/192.168.40.152 to hadoop153:9000 failed on socket timeout exception: java.net.NoRouteToHostException: No route to host;
+   ```
+
+   1. nn1检查到zk的锁节点消失
+   2. 尝试和谐失败
+   3. 尝试sshfence失败
+   4. nn1此时会一直尝试sshfence，当时显然不可能恢复，此时为了方式split brain，只能保持standby
+

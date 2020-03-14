@@ -1961,7 +1961,7 @@ xiyou/dssz/houge.txt
 （4）解压到指定目录
 
 ```bash
-[root@hadoop101 ~]# tar -zxvf xiyou.tar.gz - /opt
+[root@hadoop101 ~]# tar -zxvf xiyou.tar.gz -C /opt
 [root@hadoop101 ~]# ll /opt/
 ```
 

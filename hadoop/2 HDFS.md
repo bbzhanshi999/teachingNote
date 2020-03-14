@@ -919,7 +919,7 @@ fs.close();
 
 ​	（8）NameNode将fsimage.chkpoint重新命名成fsimage。
 
-> 假设HDFS是家菜鸟驿站，NameNode是驿站老板，SecondaryNameNode是员工，数据是包裹，fsimage包裹入库位置图，editlog是存储包裹的记录，你应该就能明白。
+> 假设HDFS是家菜鸟驿站，NameNode是驿站老板，SecondaryNameNode是员工，数据是包裹，fsimage就是包裹入库位置图，editlog是存储包裹的记录，你应该就能明白。
 
 #### **补充：**
 
