@@ -1137,8 +1137,6 @@ HDFS HA功能通过配置Active/Standby两个NameNodes实现在集群中对NameN
 | JournalNode           | JournalNode           | JournalNode |
 | DataNode              | DataNode              | DataNode    |
 | Zookeeper             | Zookeeper             | Zookeeper   |
-|                       | ResourceManager       |             |
-| NodeManager           | NodeManager           | NodeManager |
 
 ### 配置ZooKeeper集群
 
@@ -1405,7 +1403,7 @@ HDFS HA功能通过配置Active/Standby两个NameNodes实现在集群中对NameN
 > 
 > ```
 
-##### 验证自动故障转移
+#### 验证自动故障转移
 
 1. 将Active NameNode进程kill
 
@@ -1508,3 +1506,157 @@ HDFS HA功能通过配置Active/Standby两个NameNodes实现在集群中对NameN
    3. 尝试sshfence失败
    4. nn1此时会一直尝试sshfence，当时显然不可能恢复，此时为了方式split brain，只能保持standby
 
+## YARN-HA配置
+
+### YARN-HA工作机制
+
+![](img/yarn-ha工作机制.png)
+
+yarn ha工作机制相较与hdfs还要简单，由于yarn诞生较晚，所以类似于zkfc这样的sidecar组件直接被写在了`ResourceManager`当中，并且yarn有不需要QJM这样存放编辑日志的组件，因此更加简单。
+
+### 配置YARN-HA集群
+
+#### 规划集群
+
+| hadoop102       | hadoop103       | hadoop104   |
+| --------------- | --------------- | ----------- |
+| NameNode        | NameNode        |             |
+| JournalNode     | JournalNode     | JournalNode |
+| DataNode        | DataNode        | DataNode    |
+| ZK              | ZK              | ZK          |
+| ResourceManager | ResourceManager |             |
+| NodeManager     | NodeManager     | NodeManager |
+
+#### 具体配置
+
+hdfs配置同上，略
+
+1. `yarn-site.xml`
+
+   ```xml
+   <configuration>
+   
+       <property>
+           <name>yarn.nodemanager.aux-services</name>
+           <value>mapreduce_shuffle</value>
+       </property>
+   
+       <!--启用resourcemanager ha-->
+       <property>
+           <name>yarn.resourcemanager.ha.enabled</name>
+           <value>true</value>
+       </property>
+    
+       <!--声明两台resourcemanager的地址-->
+       <property>
+           <name>yarn.resourcemanager.cluster-id</name>
+           <value>cluster-yarn1</value>
+       </property>
+   
+       <property>
+           <name>yarn.resourcemanager.ha.rm-ids</name>
+           <value>rm1,rm2</value>
+       </property>
+   
+       <property>
+           <name>yarn.resourcemanager.hostname.rm1</name>
+           <value>hadoop152</value>
+       </property>
+   
+       <property>
+           <name>yarn.resourcemanager.hostname.rm2</name>
+           <value>hadoop153</value>
+       </property>
+    
+       <!--指定zookeeper集群的地址--> 
+       <property>
+           <name>yarn.resourcemanager.zk-address</name>
+           <value>hadoop152:2181,hadoop153:2181,hadoop154:2181</value>
+       </property>
+   
+       <!--启用自动恢复--> 
+       <property>
+           <name>yarn.resourcemanager.recovery.enabled</name>
+           <value>true</value>
+       </property>
+    
+       <!--指定resourcemanager的状态信息存储在zookeeper集群--> 
+       <property>
+           <name>yarn.resourcemanager.store.class</name>     <value>org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore</value>
+   </property>
+   
+   </configuration>
+   ```
+
+2. 同步配置至其他节点
+
+   ```bash
+   $ xsync etc/ 
+   ```
+
+   
+
+3. 启动hdfs服务
+
+   ```bash
+   $ sbin/start-dfs.sh
+   ```
+
+4. 启动yarn服务
+
+   ```bash
+   $ sbin/start-yarn.sh
+   ```
+
+   此时检查所有节点进程，会发现，仍然只有一个`ResourceManager`，另一个需要手动启动
+
+   ```bash
+   $ sbin/yarn-daemon.sh start resourcemanager
+   ```
+
+5. 查看服务状态
+
+   ```bash
+   $ bin/yarn rmadmin -getServiceState rm1
+   ```
+
+   访问yarn web服务
+
+   ![](img/yarn ha web.png)
+
+## HDFS Federation架构设计（了解）
+
+>  HDFS Federation实际上和高可用没有任何关系，它的出现是为了应对eb级别数据下，namenode所在节点内存不足以存储海量元数据信息而诞生的一种架构
+
+### NameNode架构的局限性
+
+#### 1.Namespace（命名空间）的限制
+
+​	由于NameNode在内存中存储所有的元数据（metadata），因此单个NameNode所能存储的对象（文件+块）数目受到NameNode所在JVM的heap size的限制。50G的heap能够存储20亿（200million）个对象，这20亿个对象支持4000个DataNode，12PB的存储（假设文件平均大小为40MB）。随着数据的飞速增长，存储的需求也随之增长。单个DataNode从4T增长到36T，集群的尺寸增长到8000个DataNode。存储的需求从12PB增长到大于100PB。
+
+#### 2.隔离问题
+
+由于HDFS仅有一个NameNode，无法隔离各个程序，因此HDFS上的一个实验程序就很有可能影响整个HDFS上运行的程序。
+
+#### 3.性能的瓶颈
+
+由于是单个NameNode的HDFS架构，因此整个HDFS文件系统的吞吐量受限于单个NameNode的吞吐量。
+
+### HDFS Federation架构概述
+
+​	通过多个NameNode解决问题
+
+| NameNode | NameNode | NameNode          |
+| -------- | -------- | ----------------- |
+| 元数据   | 元数据   | 元数据            |
+| Log      | machine  | 电商数据/话单数据 |
+
+![](img/hdfs federation.png)
+
+> 通过hdfs federation架构，不同应用可以使用不同NameNode进行数据管理
+>
+> 图片业务、爬虫业务、日志审计业务
+>
+> Hadoop生态系统中，不同的框架使用不同的NameNode进行管理NameSpace。（隔离性）
+
+​		
