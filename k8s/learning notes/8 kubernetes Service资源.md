@@ -74,13 +74,8 @@ iptables 因为它纯粹是为防火墙而设计的，并且基于内核规则�
        None.
   ```
 
-  sessionAffinity基于客户端IP地址进行会话保持的模式，即第 
+  sessionAffinity基于客户端IP地址进行会话保持的模式，即第1次将某个客户端发起的请求转发到后端的某个Pod上，之后从相同的客户端发起的请求都将被转发到后端相同的Pod上默认值位None，当为None时，service的负载均衡策略是RoundRobin，而为ClientIp时，就绑定至客户端ip
 
-  1次将某个客户端发起的请求转发到后端的某个Pod上，之后从相同的客 
-
-  户端发起的请求都将被转发到后端相同的Pod上
-
-  默认值位None，当为None时，service的负载均衡策略是RoundRobin，而为ClientIp时，就绑定至客户端ip
 
 ### 2.2 ClusterIP
 
@@ -208,7 +203,7 @@ curl http://192.168.134.201:30080
 
 ### 2.5 headless Service
 
-​	在某些应用场景中，开发人员希望自己控制负载均衡的策略，不使 用Service提供的默认负载均衡的功能，或者应用程序希望知道属于同组 服务的其他实例。Kubernetes提供了Headless Service来实现这种功能， 即不为Service设置ClusterIP（入口IP地址），仅通过Label Selector将后 端的Pod列表返回给调用的客户端。
+​	在某些应用场景中，开发人员希望自己控制负载均衡的策略，不使用Service提供的默认负载均衡的功能，或者应用程序希望知道属于同组服务的其他实例。Kubernetes提供了Headless Service来实现这种功能， 即不为Service设置ClusterIP（入口IP地址），仅通过Label Selector将后端的Pod列表返回给调用的客户端。
 
 例如修改上面的redis service：
 
