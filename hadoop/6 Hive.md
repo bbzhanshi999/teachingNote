@@ -577,6 +577,8 @@ $ nohup hiverserver2 &
 
 #### 3.启动beeline
 
+beeline是一个jdbc的客户端，我们可以通过它连接hive的服务
+
 ```bash
 $ beeline
 beeline> !connect jdbc:hive2://hadoop152:10000（回车）
@@ -593,6 +595,12 @@ Transaction isolation: TRANSACTION_REPEATABLE_READ
 | default        |
 | hive_db2       |
 +----------------+--+
+```
+
+或者直接连接服务
+
+```bash
+$ beeline -n hadoop -p 1234 -u jdbc:hive2://hadoop152:10000
 ```
 
 ### Hive常用命令交互
@@ -1655,4 +1663,691 @@ hive (default)> drop table dept_partition;
 ```
 
 ## DML数据操作
+
+### 数据导入
+
+#### 向表中装载数据（LOAD）
+
+##### **语法**
+
+```sql
+load data [local] inpath '/opt/module/datas/student.txt' [overwrite] into table student [partition (partcol1=val1,…)];
+```
+
+（1）load data:表示加载数据
+
+（2）local:表示从本地加载数据到hive表；否则从HDFS加载数据到hive表
+
+（3）inpath:表示加载数据的路径
+
+（4）overwrite:表示覆盖表中已有数据，否则表示追加
+
+（5）into table:表示加载到哪张表
+
+（6）student:表示具体的表
+
+（7）partition:表示上传到指定分区
+
+##### 案例
+
+1. 创建一张表
+
+   ```bash
+   hive (default)> create table student(id string, name string) row format delimited fields terminated by '\t';
+   ```
+
+2. 加载本地文件到hive
+
+   ```bash
+   hive (default)> load data local inpath '/opt/module/datas/student.txt' into table default.student;
+   ```
+
+3. 加载HDFS文件到hive中
+
+   上传文件到HDFS
+
+   ```bash
+   hive (default)> dfs -put /opt/module/datas/student.txt /student;
+   ```
+
+   加载HDFS上数据
+
+   ```bash
+   hive (default)> load data inpath '/student/student.txt' into table default.student;
+   ```
+
+4. 加载数据覆盖表已有数据
+
+   ```bash
+   hive (default)> load data inpath '/student/student.txt' overwrite into table default.student;
+   ```
+
+
+#### 通过查询插入数据
+
+1. 创建一张分区表
+
+   ```bash
+   hive (default)> create table student(id int, name string) partitioned by (month string) row format delimited fields terminated by '\t';
+   ```
+
+2. 基本插入数据
+
+   ```bash
+   hive (default)> insert into table  student partition(month='201709') values(1,'wangwu'),(2,’zhaoliu’);
+   ```
+
+3. 根据单张表查询结果插入
+
+   ```bash
+   hive (default)> insert overwrite table student partition(month='201708')
+                select id, name from student where month='201709';
+   ```
+
+   insert into：以追加数据的方式插入到表或分区，原有数据不会删除
+
+   insert overwrite：会覆盖表或分区中已存在的数据
+
+   >  **注意：insert不支持插入部分字段**
+
+4. 多表（多分区）插入模式（根据多张表查询结果）
+
+   ```bash
+   hive (default)> from student
+                 insert overwrite table student partition(month='201707')
+                 select id, name where month='201709'
+                 insert overwrite table student partition(month='201706')
+                 select id, name where month='201709';
+   ```
+
+#### 查询语句中创建表并加载数据(as select)
+
+根据查询结果创建表（查询的结果会添加到新创建的表中）
+
+```sql
+create table if not exists student3
+as select id, name from student;
+```
+
+#### 创建表时通过Location指定加载数据路径
+
+>  这种方式就是建外部表的方式
+
+1. 上传数据到hdfs上
+
+   ```bash
+   hive (default)> dfs -mkdir /student5;
+   hive (default)> dfs -put /opt/module/datas/student.txt /student5;
+   ```
+
+2. 创建表，并指定在hdfs上的位置
+
+   ```bash
+   hive (default)> create external table if not exists student5(
+                 id int, name string
+                 )
+                 row format delimited fields terminated by '\t'
+                 location '/student5';
+   ```
+
+3. 查询数据
+
+   ```bash
+   hive (default)> select * from student5;
+   ```
+
+#### Import数据到指定Hive表中
+
+> 注意：先用export导出后，再将数据导入。
+
+```bash
+hive (default)> import table student2 partition(month='201709') from
+ '/user/hive/warehouse/export/student';
+```
+
+### 数据导出
+
+#### Insert导出
+
+1. 将查询的结果导出到本地
+
+   ```bash
+   hive (default)> insert overwrite local directory '/opt/module/datas/export/student'
+               select * from student;
+   ```
+
+2. 将查询的结果格式化导出到本地
+
+   ```bash
+   hive(default)>insert overwrite local directory '/opt/module/datas/export/student1'
+              ROW FORMAT DELIMITED FIELDS TERMINATED BY '-'             select * from student;
+   ```
+
+3. 将查询的结果导出到HDFS上(没有local)
+
+   ```bash
+   hive (default)> insert overwrite directory '/export/student2'
+                ROW FORMAT DELIMITED FIELDS TERMINATED BY '-' 
+                select * from student;
+   ```
+
+#### Hadoop命令导出到本地
+
+```bash
+hive (default)> dfs -get /user/hive/warehouse/student/month=201709/000000_0
+/opt/module/datas/export/student3.txt;
+```
+
+#### Hive shell 命令导出
+
+基本语法：`hive -f/-e 执行语句或者脚本 > file`
+
+```bash
+$  bin/hive -e 'select * from default.student;' >
+ /opt/module/datas/export/student4.txt;
+$ cat student4.txt
+-----------------
+student.id	student.name
+1001	zhangshan
+1002	lishi
+1003	zhaoliu
+```
+
+#### Export导出到HDFS上
+
+```bash
+hive > export table default.student to
+ '/export/student5';
+```
+
+> export和import主要用于两个Hadoop平台集群之间Hive表迁移。因此实际上完整应该这么写
+>
+> ```bash
+> hive > export table student to  'hdfs://hadoop152:9000/export/student5';
+> ```
+
+检查`/export/student5`目录
+
+![](img/export数据.png)
+
+其他的方式导出的只是数据，**而export不仅导出了数据，还导出了元数据。**因此当我们使用**import**关键字导入export的数据时，**我们并不需要描述表有哪些字段如何分割等等信息**，因为**我们有元数据。**
+
+使用import将数据导入到student6表
+
+```bash
+hive > import table student6 from '/export/student5';
+```
+
+#### Sqoop导出
+
+后续课程专门讲。
+
+> sqoop主要负责将关系型数据库的数据与hdfs之间进行传导
+
+### 清除表数据
+
+>  **注意：Truncate只能删除管理表，不能删除外部表中数据**
+
+```bash
+hive (default)> truncate table student;
+```
+
+## 数据查询
+
+​	实际上我们在大数据领域的应用往往是查询的工作远远大于写入，因此，查询语句很重要。
+
+> 参考文档：<https://cwiki.apache.org/confluence/display/Hive/LanguageManual+Select>
+
+查询语句语法：
+
+```sql
+[WITH CommonTableExpression (, CommonTableExpression)*]    (Note: Only available
+ starting with Hive 0.13.0)
+SELECT [ALL | DISTINCT] select_expr, select_expr, ...
+  FROM table_reference
+  [WHERE where_condition]
+  [GROUP BY col_list]
+  [ORDER BY col_list]
+  [CLUSTER BY col_list
+    | [DISTRIBUTE BY col_list] [SORT BY col_list]
+  ]
+ [LIMIT number]
+```
+
+### 基本查询（select...from）
+
+#### 全表和特定列查询
+
+创建部门表
+
+```sql
+create table if not exists dept(
+deptno int,
+dname string,
+loc int
+)
+row format delimited fields terminated by '\t';
+```
+
+创建员工表
+
+```sql
+create table if not exists emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string, 
+sal double, 
+comm double,
+deptno int)
+row format delimited fields terminated by '\t';
+```
+
+导入数据
+
+```sql
+hive (default)> load data local inpath '/opt/module/datas/dept.txt' into table
+dept;
+hive (default)> load data local inpath '/opt/module/datas/emp.txt' into table emp;
+```
+
+##### 1.全表查询
+
+```
+hive > select * from emp;
+```
+
+##### 2.选择特定列查询
+
+```bash
+hive > select empno,ename from emp;
+```
+
+> 注意：
+>
+> （1）SQL 语言**大小写不敏感。** 
+>
+> （2）SQL 可以写在一行或者多行
+>
+> （3）**关键字不能被缩写也不能分行**
+>
+> （4）各子句一般要分行写。
+>
+> （5）使用缩进提高语句的可读性。
+
+#### 列别名
+
+ 	与mysql的别名类似，我们可以重命名一列的名称，别名紧跟列名，也可以在列名和别名之间加入关键字‘AS’
+
+##### 案列
+
+查询护院所属部门和名字
+
+```bash
+hive > select ename as name ,deptno dn from emp;
+```
+
+#### 算数运算符
+
+| 运算符 | 描述           |
+| ------ | -------------- |
+| A+B    | A和B 相加      |
+| A-B    | A减去B         |
+| A*B    | A和B 相乘      |
+| A/B    | A除以B         |
+| A%B    | A对B取余       |
+| A&B    | A和B按位取与   |
+| A\|B   | A和B按位取或   |
+| A^B    | A和B按位取异或 |
+| ~A     | A按位取反      |
+
+##### 案例
+
+查询出所有员工的薪水后加1显示
+
+```bash
+hive > select sal+1 from emp;
+```
+
+#### 常用函数
+
+查询所有函数
+
+```bash
+hive > show functions;
+```
+
+##### 1.求总行数（count）
+
+```bash
+hive (default)> select count(*) cnt from emp;
+```
+
+##### 2.求最大值（max）最小值（min）
+
+求工资最大值与最小值
+
+```bash
+hive > select max(sal) max_sal from emp;
+hive > select min(sal) min_sal from emp;
+```
+
+##### 3.求和（sum）
+
+```bash
+hive > select sum(sal) sum_sal from emp;
+```
+
+##### 4.求平均值（avg）
+
+```bash
+hive < select avg(sal) avg_sal from emp;
+```
+
+#### Limit语句
+
+典型的查询会返回多行数据。LIMIT子句用于限制返回的行数。
+
+```bash
+hive > select * from emp limit 5;
+```
+
+从第2条开始显示5条
+
+```bash
+hive > select * from emp limit 1,5;
+```
+
+### where语句
+
+​	使用where子句，将不满足条件的行过滤掉，where子句紧随from子句
+
+#### 案例
+
+查询出薪水大于1000的所有员工
+
+```bash
+hive > select * from emp wherer sal >1000;
+```
+
+> 注意：where子句中不能使用字段别名
+
+#### 比较运算符(between/in/is null)
+
+下面表中描述了谓词操作符，这些操作符同样可以用于`JOIN`…`ON`和`HAVING`语句中。
+
+| 操作符                  | 支持的数据类型 | 描述                                                         |
+| ----------------------- | -------------- | ------------------------------------------------------------ |
+| A=B                     | 基本数据类型   | 如果A等于B则返回TRUE，反之返回FALSE                          |
+| A<=>B                   | 基本数据类型   | 如果A和B都为NULL，则返回TRUE，其他的和等号（=）操作符的结果一致，如果任一为NULL则结果为NULL |
+| A<>B, A!=B              | 基本数据类型   | A或者B为NULL则返回NULL；如果A不等于B，则返回TRUE，反之返回FALSE |
+| A<B                     | 基本数据类型   | A或者B为NULL，则返回NULL；如果A小于B，则返回TRUE，反之返回FALSE |
+| A<=B                    | 基本数据类型   | A或者B为NULL，则返回NULL；如果A小于等于B，则返回TRUE，反之返回FALSE |
+| A>B                     | 基本数据类型   | A或者B为NULL，则返回NULL；如果A大于B，则返回TRUE，反之返回FALSE |
+| A>=B                    | 基本数据类型   | A或者B为NULL，则返回NULL；如果A大于等于B，则返回TRUE，反之返回FALSE |
+| A [NOT] BETWEEN B AND C | 基本数据类型   | 如果A，B或者C任一为NULL，则结果为NULL。如果A的值大于等于B而且小于或等于C，则结果为TRUE，反之为FALSE。如果使用NOT关键字则可达到相反的效果。 |
+| A IS NULL               | 所有数据类型   | 如果A等于NULL，则返回TRUE，反之返回FALSE                     |
+| A IS NOT NULL           | 所有数据类型   | 如果A不等于NULL，则返回TRUE，反之返回FALSE                   |
+| IN(数值1, 数值2)        | 所有数据类型   | 使用 IN运算显示列表中的值                                    |
+| A [NOT] LIKE B          | STRING 类型    | B是一个SQL下的简单正则表达式，也叫通配符模式，如果A与其匹配的话，则返回TRUE；反之返回FALSE。B的表达式说明如下：‘x%’表示A必须以字母‘x’开头，‘%x’表示A必须以字母’x’结尾，而‘%x%’表示A包含有字母’x’,可以位于开头，结尾或者字符串中间。如果使用NOT关键字则可达到相反的效果。 |
+| A RLIKE B, A REGEXP B   | STRING 类型    | B是基于java的正则表达式，如果A与其匹配，则返回TRUE；反之返回FALSE。匹配使用的是JDK中的正则表达式接口实现的，因为正则也依据其中的规则。例如，正则表达式必须和整个字符串A相匹配，而不是只需与其字符串匹配。 |
+
+##### 案列
+
+1. 查询出薪水等于5000的所有员工
+
+   ```bash
+   hive (default)> select * from emp where sal =5000;
+   ```
+
+2. 查询工资在500到1000的员工信息
+
+   ```bash
+   hive (default)> select * from emp where sal between 500 and 1000;
+   ```
+
+3. 查询comm为空的所有员工信息
+
+   ```bash
+   hive (default)> select * from emp where comm is null;
+   ```
+
+4. 查询工资是1500或5000的员工信息
+
+   ```bash
+   hive (default)> select * from emp where sal IN (1500, 5000);
+   ```
+
+#### Like和RLike
+
+**Like**与关系型数据库用法类似，使用LIKE运算选择类似的值
+
+选择条件可以包含字符或数字：`%` 代表零个或多个字符，`_ `代表一个字符。
+
+**RLIKE**子句是Hive中这个功能的一个扩展，其可以通过Java的**正则表达式**这个更强大的语言来指定匹配条件。
+
+##### 案列
+
+1. 查找以2开头薪水的员工信息
+
+   ```bash
+   hive (default)> select * from emp where sal LIKE '2%';
+   ```
+
+2. 查找第二个数据为2的薪水的员工信息
+
+   ```bash
+   hive (default)> select * from emp where sal LIKE '_2%';
+   ```
+
+3. 查找名字以S结尾的员工
+
+   ```bash
+   hive > select * from emp where ename RLIKE 'S$';
+   ```
+
+#### 逻辑运算符
+
+| 操作符 | 含义   |
+| ------ | ------ |
+| AND    | 逻辑并 |
+| OR     | 逻辑或 |
+| NOT    | 逻辑否 |
+
+##### 案例
+
+1. 查询薪水大于1000，部门是30
+
+   ```bash
+   hive (default)> select * from emp where sal>1000 and deptno=30;
+   ```
+
+2. 查询薪水大于1000，或者部门是30
+
+   ```bash
+   hive (default)> select * from emp where sal>1000 or deptno=30;
+   ```
+
+3. 查询除了20部门和30部门以外的员工信息
+
+   ```bash
+   hive (default)> select * from emp where deptno not IN(30, 20);
+   ```
+
+   > 注意:
+   >
+   > **如果表时存在分区的情况，最好不要写IN，**因为我们知道，这样会引起全表扫描，这点实际上是和mysql 一样的，mysql当中需要尽量避免是用in，原因就是会进行全表扫描，而不使用索引。
+
+### 分组
+
+#### Group By语句
+
+​	GROUP BY语句通常会和聚合函数一起使用，按照一个或者多个列队结果进行分组，然后对每个组执行聚合操作。
+
+##### 案例
+
+1. 计算emp表每个部门的平均工资
+
+   ```bash
+   hive (default)> select t.deptno, avg(t.sal) avg_sal from emp t group by t.deptno;
+   ```
+
+2. 计算emp每个部门中每个岗位的最高薪水
+
+   ```bash
+   hive (default)> select t.deptno, t.job, max(t.sal) max_sal from emp t group by
+    t.deptno, t.job;
+   ```
+
+#### Having语句
+
+##### having与where不同点
+
+1. where后面不能写分组函数，而having后面可以使用分组函数。
+2. having只用于group by分组统计语句。
+
+##### 案例
+
+1. 求每个部门的平均薪水大于2000的部门
+
+   ```bash
+   hive > select deptno ,avg(sal) avg_sal from emp group by deptno having avg_sal> 2000;
+   ```
+
+### JOIN语句
+
+Hive支持通常的SQL JOIN语句，但是**只支持等值连接，不支持非等值连接**。
+
+#### 案例
+
+1. 根据员工表和部门表中的部门编号相等，查询员工编号、员工名称和部门名称；
+
+   ```bash
+   hive > select e.empno, e.ename, d.deptno, d.dname from emp e join dept d on e.deptno = d.deptno;
+   ```
+
+#### 表的别名
+
+同mysql一样，我们在join查询时，可以给表起别名
+
+1. 使用别名可以简化查询
+2. 使用表名前缀可以提高执行效率
+
+##### 案例
+
+合并员工表和部门表
+
+```bash
+hive (default)> select e.empno, e.ename,d.dname, d.deptno from emp e join dept d on e.deptno
+ = d.deptno;
+```
+
+#### 内连接
+
+内连接：只有进行连接的两个表中都存在与连接条件相匹配的数据才会被保留下来。
+
+```bash
+hive (default)> select e.empno, e.ename,d.dname, d.deptno from emp e join dept d on e.deptno
+ = d.deptno;
+```
+
+#### 左外连接
+
+左外连接：JOIN操作符左边表中符合WHERE子句的所有记录将会被返回。
+
+```bash
+hive (default)> select e.empno, e.ename,d.dname, d.deptno from emp e left join dept d on e.deptno = d.deptno;
+```
+
+#### 右外连接
+
+```bash
+hive (default)> select e.empno, e.ename,d.dname, d.deptno from emp e right join dept d on e.deptno = d.deptno;
+```
+
+#### 满外连接
+
+满外连接：将会返回所有表中符合WHERE语句条件的所有记录。如果任一表的指定字段没有符合条件的值的话，那么就使用NULL值替代。
+
+```bash
+hive (default)> select e.empno, e.ename,d.dname, d.deptno from emp e full join dept d on e.deptno
+ = d.deptno;
+```
+
+#### 多表连接
+
+> 注意：连接 n个表，至少需要n-1个连接条件。例如：连接三个表，至少需要两个连接条件。
+
+数据准备，准备一张location表所需的数据
+
+```
+1700	Beijing
+1800	London
+1900	Tokyo
+```
+
+##### 1.创建位置表
+
+```sql
+create table if not exists location(
+loc int,
+loc_name string
+)
+row format delimited fields terminated by '\t';
+```
+
+##### 2.导入数据
+
+```bash
+hive (default)> load data local inpath '/opt/module/datas/location.txt' into table location;
+```
+
+##### 3.多表连接查询
+
+```bash
+hive (default)>SELECT e.ename, d.dname, l.loc_name
+FROM   emp e 
+JOIN   dept d
+ON     d.deptno = e.deptno 
+JOIN   location l
+ON     d.loc = l.loc;
+```
+
+​	大多数情况下，**Hive会对每对JOIN连接对象启动一个MapReduce任务**。本例中会首先启动一个MapReduce job对表e和表d进行连接操作，然后会再启动一个MapReduce job将第一个MapReduce job的输出和表l;进行连接操作。
+
+> 注意：为什么不是表d和表l先进行连接操作呢？这是因为Hive总是按照从左到右的顺序执行的。
+
+优化：**当对3个或者更多表进行join连接时，如果每个on子句都使用相同的连接键的话，那么只会产生一个MapReduce job。**
+
+#### 笛卡尔积
+
+笛卡尔集会在下面条件下产生
+
+1. 省略连接条件
+2. 连接条件无效
+3. 所有表中的所有行互相连接
+
+##### 案例
+
+```bash
+hive (default)> select empno, dname from emp, dept;
+```
+
+> 实际生产中严禁笛卡尔积，hive2中已经默认禁止了，除非取消严格模式配置
+>
+> ```bash
+> Error: Error while compiling statement: FAILED: SemanticException Cartesian products are disabled for safety reasons. If you know what you are doing, please sethive.strict.checks.cartesian.product to false and that hive.mapred.mode is not set to 'strict' to proceed. Note that if you may get errors or incorrect results if you make a mistake while using some of the unsafe features. (state=42000,code=40000)
+> ```
+
+#### 连接谓词中不支持or
+
+hive join目前不支持在on子句中使用谓词or
+
+##### 错误案例
+
+```bash
+hive (default)> select e.empno, e.ename, d.deptno from emp e join dept d on e.deptno
+= d.deptno or e.ename=d.dname;   错误的
+```
 
