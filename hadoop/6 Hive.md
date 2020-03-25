@@ -2539,7 +2539,7 @@ hive > select ename ,deptno,sal from emp order by deptno,sal;
 
    > 思考：为什么要设置reduces数量为默认，并且要通过查询导入数据才能出现分桶文件？
    >
-   > 原因是因为，要想实现分桶，数据必须走一次mapreduce，通过MapReduce的分区功能来实现数据的分桶，也就是说：**分桶表的实现利用的真实mapreduce中的分区，通过对分桶字段的值进行哈希，然后除以通的个数求余的方式决定该条记录放在哪个桶当中，有多少个桶，就要开多少个reduceTask**
+   > 原因是因为，要想实现分桶，数据必须走一次mapreduce，通过MapReduce的分区功能来实现数据的分桶，也就是说：**分桶表的实现利用的真实mapreduce中的分区，通过将字段的hashcode除以分桶的个数求余的方式决定该条记录放在哪个桶当中，有多少个桶，就要开多少个reduceTask**
 
 7. 查询分桶数据
 
