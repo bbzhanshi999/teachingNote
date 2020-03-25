@@ -1124,7 +1124,7 @@ CREATE [EXTERNAL] TABLE [IF NOT EXISTS] table_name
 >
 > [PARTITIONED BY (col_name data_type [COMMENT col_comment], ...)] 分区列，起到类似mysql索引的作用，可以有效提高查询速度。
 >
-> [CLUSTERED BY (col_name, col_name, ...) ：hive的分桶就是mapreduce的partition
+> [CLUSTERED BY (col_name, col_name, ...) ：hive的分桶表
 >
 > [SORTED BY (col_name [ASC|DESC], ...)] INTO num_buckets BUCKETS] ：排序
 >
@@ -2350,4 +2350,220 @@ hive join目前不支持在on子句中使用谓词or
 hive (default)> select e.empno, e.ename, d.deptno from emp e join dept d on e.deptno
 = d.deptno or e.ename=d.dname;   错误的
 ```
+
+### 排序
+
+#### 全局排序（order by）
+
+Order By： **全局排序，只有一个Reducer**
+
+> order by 要**慎用**，因为全表交给reducer排序压力太大。另外，distinct全局去重也是如此的道理，**不能乱用**
+
+##### 1.使用 ORDER BY 子句排序
+
+ASC（ascend）: 升序（默认）
+
+DESC（descend）: 降序
+
+##### 2.ORDER BY 子句在SELECT语句的结尾
+
+###### 案例
+
+1. 查询员工信息按工资升序排序
+
+   ```bash
+   hive > select * from emp order by sal;
+   ```
+
+2. 查询员工信息按工资降序排列
+
+   ```bash
+   hive > select * from emp order by sal desc;
+   ```
+
+#### 按照别名排序
+
+按照员工薪水的2倍排序
+
+```bash
+hive > select ename ,sal*2 twosal from emp order by twosal;
+```
+
+#### 多个列排序
+
+按照部门和工资升序排序
+
+```bash
+hive > select ename ,deptno,sal from emp order by deptno,sal;
+```
+
+#### 每个MapReduce内部排序（Sort By）
+
+​	Sort By：对于大规模的数据集order by的效率非常低。在很多情况下，并不需要全局排序，此时可以使用`sort by`。
+
+`Sort by`为每个`reducer`产生一个排序文件。每个`Reducer`内部进行排序，对全局结果集来说不是排序。
+
+1. 设置reduce个数
+
+   ```bash
+   hive > set mapreduce.job.reduces=3;
+   ```
+
+2. 查看设置reduce个数
+
+   ```bash
+   hive (default)> set mapreduce.job.reduces;
+   ```
+
+3. 根据部门编号降序查看员工信息
+
+   ```bash
+   hive > select * from emp sort by deptno desc;
+   ```
+
+4. 将查询结果导入到文件中（按照部门编号降序排列）
+
+   ```bash
+   hive > insert overwrite local directory '/opt/module/datas/sortby-result'
+    select * from emp sort by deptno desc;
+   ```
+
+#### 分区排序
+
+​	Distribute By： 在有些情况下，我们需要控制某个特定行应该到哪个reducer，通常是为了进行后续的聚集操作。**distribute by** 子句可以做这件事。**distribute by**类似MR中partition（自定义分区），进行分区，结合sort by使用。 
+
+​	对于distribute by进行测试，一定要分配多reduce进行处理，否则无法看到distribute by的效果。
+
+##### 案例
+
+1. 先按照部门编号分区，再按照员工编号降序排序。
+
+   ```bash
+   hive (default)> set mapreduce.job.reduces=3;
+   hive (default)> insert overwrite local directory '/opt/module/datas/distribute-result' select * from emp distribute by deptno sort by empno desc;
+   ```
+
+注意：
+
+1. distribute by的分区规则是根据分区字段的hash码与reduce的个数进行模除后，余数相同的分到一个区。
+2. **Hive要求DISTRIBUTE BY语句要写在SORT BY语句之前。**
+
+#### Cluster By
+
+​	当distribute by和sorts by字段相同时，可以使用cluster by方式。
+
+​	cluster by除了具有distribute by的功能外还兼具sort by的功能。但是排序**只能是升序排序**，不能指定排序规则为ASC或者DESC。
+
+1. 以下两种写法等价
+
+   ```bash
+   hive (default)> select * from emp cluster by deptno;
+   hive (default)> select * from emp distribute by deptno sort by deptno;
+   ```
+
+> 注意：按照部门编号分区，不一定就是固定死的数值，可以是20号和30号部门分到一个分区里面去。
+
+### 分桶及抽样查询
+
+#### 分桶表数据存储
+
+​	分区提供一个隔离数据和优化查询的便利方式。不过，并非所有的数据集都可形成合理的分区。对于一张表或者分区，Hive 可以进一步组织成桶，也就是更为细粒度的数据范围划分。
+
+​	分桶是将数据集分解成更容易管理的若干部分的另一个技术。
+
+**分区针对的是数据的存储路径；分桶针对的是数据文件。**
+
+##### 1.先创建分桶表，通过直接导入数据文件的方式
+
+1. 数据准备
+
+   ```
+   1001	ss1
+   1002	ss2
+   1003	ss3
+   1004	ss4
+   1005	ss5
+   1006	ss6
+   1007	ss7
+   1008	ss8
+   1009	ss9
+   1010	ss10
+   1011	ss11
+   1012	ss12
+   1013	ss13
+   1014	ss14
+   1015	ss15
+   1016	ss16
+   ```
+
+2. 创建分桶表
+
+   ```sql
+   create table stu_buck(id int, name string)
+   clustered by(id) 
+   into 4 buckets
+   row format delimited fields terminated by '\t';
+   ```
+
+3. 查看表结构
+
+   ```bash
+   hive (default)> desc formatted stu_buck;
+   -------------------------------
+   Num Buckets:            4
+   ```
+
+4. 导入数据到分桶表中
+
+   ```bash
+   hive (default)> load data local inpath '/opt/module/datas/student.txt' into table
+    stu_buck;
+   ```
+
+5. 发现还是只有一个分桶
+
+   ![](img/一个bukect.png)
+
+6. 设置如下属性并且通过查询插入数据
+
+   ```bash
+   hive (default)> set hive.enforce.bucketing=true;
+   hive (default)> set mapreduce.job.reduces=-1;
+   hive (default)> insert into table stu_buck
+   select id, name from student;
+   ```
+
+   再次查看web，发现出现四个分桶
+
+   ![](img/分桶出现.png)
+
+   > 思考：为什么要设置reduces数量为默认，并且要通过查询导入数据才能出现分桶文件？
+   >
+   > 原因是因为，要想实现分桶，数据必须走一次mapreduce，通过MapReduce的分区功能来实现数据的分桶，也就是说：**分桶表的实现利用的真实mapreduce中的分区，通过对分桶字段的值进行哈希，然后除以通的个数求余的方式决定该条记录放在哪个桶当中，有多少个桶，就要开多少个reduceTask**
+
+7. 查询分桶数据
+
+   ```bash
+   hive (default)> select * from stu_buck;
+   OK
+   stu_buck.id     stu_buck.name
+   1004    ss4
+   1008    ss8
+   1012    ss12
+   1016    ss16
+   1001    ss1
+   1005    ss5
+   1009    ss9
+   1013    ss13
+   1002    ss2
+   1006    ss6
+   1010    ss10
+   1014    ss14
+   1003    ss3
+   1007    ss7
+   1011    ss11
+   1015    ss15
+   ```
+
+#### 分桶抽样查询
 
