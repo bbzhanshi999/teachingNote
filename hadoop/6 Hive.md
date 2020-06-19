@@ -3206,6 +3206,7 @@ hive> desc function extended upper;
    Drop [temporary] function [if exists] [dbname.]function_name;
    ```
 
+<<<<<<< HEAD
 注意事项：**UDF必自定义UDF函数要有返回类型，可以返回null，但是返回类型不能为void；**
 
 ### 自定义UDF函数
@@ -4553,4 +4554,65 @@ hive (default)> explain select deptno, avg(sal) avg_sal from emp group by deptno
 hive (default)> explain extended select * from emp;
 hive (default)> explain extended select deptno, avg(sal) avg_sal from emp group by deptno;
 ```
+=======
+注意事项：**UDF必须要有返回类型，可以返回null，但是返回类型不能为void；**
+
+### 自定义UDF函数
+
+1. 创建一个Maven工程Hive
+
+2. 导入依赖
+
+   ```xml
+   <dependencies>
+   		<!-- https://mvnrepository.com/artifact/org.apache.hive/hive-exec -->
+   		<dependency>
+   			<groupId>org.apache.hive</groupId>
+   			<artifactId>hive-exec</artifactId>
+   			<version>1.2.1</version>
+   		</dependency>
+   </dependencies>
+   ```
+
+3. 创建一个类
+
+   ```java
+   package com.neuedu;
+   import org.apache.hadoop.hive.ql.exec.UDF;
+   
+   public class Lower extends UDF {
+   
+   	public String evaluate (final String s) {
+   		
+   		if (s == null) {
+   			return null;
+   		}
+   		
+   		return s.toLowerCase();
+   	}
+   }
+   ```
+
+4. 打成jar包上传到服务器`/opt/module/hive/libs`目录下
+
+5. 将jar包添加到hive的classpath
+
+   ```bash
+   hive (default)> add jar /opt/module/hive/libs/udf.jar;
+   ```
+
+6. 创建临时函数与开发好的java class关联
+
+   ```bash
+   hive (default)> create temporary function mylower as "com.neuedu.Lower";
+   ```
+
+7. 即可在hql中使用自定义的函数
+
+   ```
+   hive (default)> select ename, mylower(ename) lowername from emp;
+   ```
+
+
+>>>>>>> 78a680ea17e9096d9a3ad5d8329cb5e18cfe565c
 
