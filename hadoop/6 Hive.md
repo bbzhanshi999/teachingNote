@@ -3698,33 +3698,33 @@ bzip2:   false
 5．进入到`/opt/software/hadoop-2.7.2/lib/native`路径可以看到支持Snappy压缩的动态链接库
 
 ```bash
-[atguigu@hadoop102 native]$ pwd
+[hadoop@hadoop102 native]$ pwd
 /opt/software/hadoop-2.7.2/lib/native
-[atguigu@hadoop102 native]$ ll
+[hadoop@hadoop102 native]$ ll
 --------------
--rw-r--r--. 1 atguigu atguigu  472950 9月   1 10:19 libsnappy.a
--rwxr-xr-x. 1 atguigu atguigu     955 9月   1 10:19 libsnappy.la
-lrwxrwxrwx. 1 atguigu atguigu      18 12月 24 20:39 libsnappy.so -> libsnappy.so.1.3.0
-lrwxrwxrwx. 1 atguigu atguigu      18 12月 24 20:39 libsnappy.so.1 -> libsnappy.so.1.3.0
--rwxr-xr-x. 1 atguigu atguigu  228177 9月   1 10:19 libsnappy.so.1.3.0
+-rw-r--r--. 1 hadoop hadoop  472950 9月   1 10:19 libsnappy.a
+-rwxr-xr-x. 1 hadoop hadoop     955 9月   1 10:19 libsnappy.la
+lrwxrwxrwx. 1 hadoop hadoop      18 12月 24 20:39 libsnappy.so -> libsnappy.so.1.3.0
+lrwxrwxrwx. 1 hadoop hadoop      18 12月 24 20:39 libsnappy.so.1 -> libsnappy.so.1.3.0
+-rwxr-xr-x. 1 hadoop hadoop  228177 9月   1 10:19 libsnappy.so.1.3.0
 ```
 
 6．拷贝`/opt/software/hadoop-2.7.2/lib/native`里面的所有内容到开发集群的`/opt/module/hadoop-2.7.2/lib/native`路径上
 
 ```bash
-[atguigu@hadoop102 native]$ cp ../native/* /opt/module/hadoop-2.7.2/lib/native/
+[hadoop@hadoop102 native]$ cp ../native/* /opt/module/hadoop-2.7.2/lib/native/
 ```
 
 7．分发集群
 
 ```bash
-[atguigu@hadoop102 lib]$ xsync native/
+[hadoop@hadoop102 lib]$ xsync native/
 ```
 
 8．再次查看hadoop支持的压缩类型
 
 ```bash
-[atguigu@hadoop102 hadoop-2.7.2]$ hadoop checknative
+[hadoop@hadoop102 hadoop-2.7.2]$ hadoop checknative
 --------------------------
 17/12/24 20:45:02 WARN bzip2.Bzip2Factory: Failed to load/initialize native-bzip2 library system-native, will use pure-Java version
 17/12/24 20:45:02 INFO zlib.ZlibFactory: Successfully loaded & initialized native-zlib library
@@ -4647,7 +4647,7 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
-import com.atguigu.util.ETLUtil;
+import com.hadoop.util.ETLUtil;
 
 public class VideoETLMapper extends Mapper<Object, Text, NullWritable, Text>{
 	Text text = new Text();
@@ -4764,7 +4764,7 @@ public class VideoETLRunner implements Tool {
 
 ```bash
 $ bin/yarn jar ~/softwares/jars/gulivideo-0.0.1-SNAPSHOT.jar \
-com.atguigu.etl.ETLVideosRunner \
+com.hadoop.etl.ETLVideosRunner \
 /gulivideo/video/2008/0222 \
 /gulivideo/output/video/2008/0222
 ```
