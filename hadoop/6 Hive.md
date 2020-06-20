@@ -5006,37 +5006,26 @@ inner join
 最终代码：
 
 ```sql
-select 
-    category_name as category, 
-    count(t5.videoId) as hot 
-from (
+select tbl.categories,count(1) hot from
+(
+    select distinct(t4.videoId), t4.category from 
+(
+    select explode(t2.relatedId) videoId from (
     select 
-        videoId, 
-        category_name 
-    from (
-        select 
-            distinct(t2.videoId), 
-            t3.category 
-        from (
-            select 
-                explode(relatedId) as videoId 
-            from (
-                select 
-                    * 
-                from 
-                    gulivideo_orc 
-                order by 
-                    views 
-                desc limit 
-                    50) t1) t2 
-        inner join 
-            gulivideo_orc t3 on t2.videoId = t3.videoId) t4 lateral view explode(category) t_catetory as category_name) t5
-group by 
-    category_name 
-order by 
-    hot 
-desc;
+        videoId,
+        views
+    from video_orc 
+    order by views desc
+    limit 50
+) t1 join video_orc t2 on t2.videoId = t1.videoId
+) t3 join video_orc t4 on t4.videoId = t3.videoId
+) t5 
+lateral view explode(t5.category) tbl as categories
+group by tbl.categories
+order by hot desc;
 ```
+
+
 
 #### 5.统计每个类别中的视频热度Top10，以Music为例
 
@@ -5117,17 +5106,23 @@ desc limit
 
 ```sql
 select 
+   videoId,categories,hot 
+from (
+    select
+    videoId,
+    categories,
+    views,
+    rank() over(partition by categories order by views desc) hot
+from 
+    (select 
     videoId,
     views,
-    ratings 
-from 
-    gulivideo_category 
-where 
-    categoryId = "Music" 
-order by 
-    ratings 
-desc limit 
-    10;
+    categories
+from video_orc 
+lateral view explode(category) tbl as categories) t
+) t2
+where t2.hot<=10
+
 ```
 
 #### 7.统计上传视频最多的用户Top10以及他们上传的观看次数在前20的视频
@@ -5152,29 +5147,14 @@ desc limit
 最终代码：
 
 ```sql
-select 
-    t2.videoId, 
-    t2.views,
-    t2.ratings,
-    t1.videos,
-    t1.friends 
-from (
-    select 
-        * 
-    from 
-        gulivideo_user_orc 
-    order by 
-        videos desc 
-    limit 
-        10) t1 
-join 
-    gulivideo_orc t2
-on 
-    t1.uploader = t2.uploader 
-order by 
-    views desc 
-limit 
-    20;
+select t1.videoId, t2.uploader, t1.views from  video_orc t1  inner join (
+    select uploader,videos 
+    from user_orc 
+    order by videos desc
+    limit 10
+) t2 on t1.uploader = t2.uploader
+order by t1.views desc 
+limit 20
 ```
 
 #### 8.统计每个类别视频观看数Top10
