@@ -255,7 +255,7 @@ export HIVE_CONF_DIR=/opt/module/hive/conf
 修改`hive-log4j2.properties`
 
 ```properties
-property.hive.log.dir =/opt/module/hive/logs
+hive.log.dir =/opt/module/hive/logs
 ```
 
 修改`hive-site.xml`
