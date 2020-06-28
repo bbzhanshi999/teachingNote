@@ -199,11 +199,15 @@ vmware安装时，注意有些选项按照图示不要勾选
 
 3. 修改虚拟机ip
 
-   我们需要通过编辑```/etc/sysconfig/network-scripts/ifcfg-eth33```这个文件来进行配置
+   我们需要通过编辑```/etc/sysconfig/network-scripts/ifcfg-ens33```这个文件来进行配置
 
    ```bash
-   $ vi /etc/sysconfig/network-scripts/ifcfg-eth33
+   $ vi /etc/sysconfig/network-scripts/ifcfg-ens33
    ```
+
+   （vi修改文件需要进入编辑模式，敲一下i键进入编辑模式
+
+   退出编辑模式，敲一下Esc按钮，输入:wq! 保存并退出）
 
    需要修改并添加如下内容
 
