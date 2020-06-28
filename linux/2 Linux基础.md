@@ -202,7 +202,7 @@ vi/vim键盘映射图图
 | :n1,n2 w [filename]                                | 将 n1 到 n2 的内容储存成 filename 这个档案。                 |
 | :set nu                                            | 显示行号                                                     |
 | :set nonu                                          | 关闭行号                                                     |
-| ZZ（shift+zz）                                     | **没有修改文件直接退出，如果修改了文件保存后退出**           |
+| ZZ（shift+zz）：wq                                 | **没有修改文件直接退出，如果修改了文件保存后退出**           |
 | :! command                                         | 暂时离开 vi 到指令行模式下执行 command 的显示结果！例如<br/>『:! ls /home』即可在 vi 当中察看 /home 底下以 ls 输出的档案信息！ |
 
 2．案例
@@ -502,7 +502,7 @@ $ sync
 （2）重启
 
 ```bash
-$ reboot
+$ reboot now
 ```
 
 （3）关机
@@ -1096,7 +1096,7 @@ $ ln -s [原文件或目录] [软链接名]		（功能描述：给原文件创�
 lrwxrwxrwx. 1 root    root      20 6月  17 12:56 houzi -> xiyou/dssz/houge.txt
 ```
 
-（2）删除软连接
+（2）删除软连接，同正常的文件一样
 
 ```bash
 [root@hadoop101 ~]# rm -rf houzi
