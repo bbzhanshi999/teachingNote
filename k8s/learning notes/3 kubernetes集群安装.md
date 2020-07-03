@@ -176,6 +176,16 @@ $ vi /etc/hosts
 192.168.134.103 node103
 ```
 
+修改主机名
+
+```bash
+$ hostnamectl set-hostname master101
+$ hostnamectl set-hostname node102
+$ hostnamectl set-hostname node103
+```
+
+
+
 #### 1.3 配置时间同步（三台都需要）
 
 ```bash
