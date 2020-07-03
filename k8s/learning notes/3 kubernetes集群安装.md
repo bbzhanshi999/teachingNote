@@ -162,8 +162,29 @@ gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors
 
 #### 2.2  yum安装（所有节点）
 
+这里我们要安装的kube版本最好不要太高，选用v1.17.0,这样可以有效避免阿里云镜像找不到最新的容器镜像
+
+1.查看kubelet kubeadm kubectl版本，你可以找到你所需要的版本。其中第一列是包的名字，第二列是版本信息。
+
 ```bash
-$ yum install -y docker-ce kubeadm kubelet kubectl
+$ yum list kubelet kubeadm kubectl  --showduplicates|sort -r
+---------
+* updates: mirrors.aliyun.com
+Loading mirror speeds from cached hostfile
+Loaded plugins: fastestmirror, langpacks
+kubelet.x86_64                       1.9.9-0                         kubernetes 
+kubelet.x86_64                       1.9.8-0                         kubernetes 
+kubelet.x86_64                       1.9.7-0                         kubernetes 
+kubelet.x86_64                       1.9.6-0                         kubernetes 
+kubelet.x86_64                       1.9.5-0                         kubernetes 
+kubelet.x86_64                       1.9.4-0                         kubernetes 
+kubelet.x86_64                       1.9.3-0                         kubernetes 
+```
+
+2.指定版本安装kubelet kubeadm kubectl，这里我选择1.17.0版本进行安装。
+
+```bash
+$ yum install -y docker-ce kubelet-1.17.0 kubeadm-1.17.0 kubectl-1.17.0
 ```
 
 #### 2.3  启动docker
