@@ -64,8 +64,67 @@
 
 
 
-
 ## 详细步骤
+
+> 准备工作
+>
+> 群发脚本
+>
+> ```bash
+> #!/bin/bash
+> 
+> arg_num=$#
+> 
+> if [ $arg_num == 0 ] 
+> then
+>    echo 'no args'
+>    exit;
+> fi
+> 
+> # 获取文件或文件夹的真实路径
+> meta_arg=$1
+> #获取文件名
+> fname=`basename $meta_arg`
+> #获取文件真实路径
+> dir=`cd -P $(dirname $meta_arg) && pwd`
+> #获取用户名，由于集群是clone出来的，所以用户名都一样
+> user=`whoami`
+> 
+> echo $dir
+> echo $fname
+> 
+> #获取要分发的集群其他机器的ip后缀，例如152-154
+> suffix_str=`echo $2 | grep "^[0-9]\{1,3\}-[0-9]\{1,3\}$"`
+> if [ $suffix_str ]
+> then
+> #false 表示什么都不做
+>  false
+> else
+>    echo 'the ip suffix not correct'
+>    exit
+> fi
+> 
+> 
+> #设置IFS分割符变量为-
+> OLD_IFS=$IFS
+> IFS='-'
+> arr=($suffix_str)
+> 
+> #设置开始ip和结束ip
+> start=${arr[0]}
+> end=${arr[1]}
+> #还原系统分隔符
+> IFS=$OLD_IFS
+> #迭代将数据拷贝到每一台集群之下
+> for((suffix=$start;suffix<=$end;suffix++));do
+>         echo "transfer to $suffix"
+> #   scp -r  $dir/$fname  $user@hadoop$suffix:$dir
+>         rsync -av $dir/$fname $user@192.168.40.$suffix:$dir
+> done
+> 
+> ```
+>
+> 
 
 ### 1. 虚拟机安装
 
