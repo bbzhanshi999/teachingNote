@@ -728,6 +728,8 @@ public void getFileFromHDFS() throws IOException, InterruptedException, URISynta
 
 	// 1 获取文件系统
 	Configuration configuration = new Configuration();
+    //设置副本
+    configuration.setInt("dfs.replication",1);
 	FileSystem fs = FileSystem.get(new URI("hdfs://hadoop152:9000"), configuration, "hadoop");
 		
 	// 2 获取输入流
@@ -1346,6 +1348,8 @@ Safe mode is OFF
 > ![](F:\teachingNote\hadoop\img\web显示心跳.png)
 
 4）集群运行中可以安全加入和退出一些机器。
+
+![](img/datanode时间间隔计算.png)
 
 ### 数据完整性
 

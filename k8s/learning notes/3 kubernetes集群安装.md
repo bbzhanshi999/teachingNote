@@ -253,7 +253,7 @@ kubelet.x86_64                       1.9.3-0                         kubernetes
 2.指定版本安装kubelet kubeadm kubectl，这里我选择1.17.0版本进行安装。
 
 ```bash
-$ yum install -y docker-ce kubelet-1.17.0 kubeadm-1.17.0 kubectl-1.17.0
+$ yum install -y docker-ce kubelet-1.16.3 kubeadm-1.16.3 kubectl-1.16.3
 ```
 
 #### 2.3  启动docker
